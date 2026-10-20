@@ -22,10 +22,14 @@ function createJobStore(config,dependencies={}){
  }
  return {async create(owner){
   for(const [id,job]of cache)if(job.expiresAt<Date.now())cache.delete(id)
-  const job={id:randomUUID(),owner,status:'running',createdAt:Date.now(),expiresAt:Date.now()+15*60*1000,deadline:Date.now()+(config.timeout||45000)+30000}
+  const job={id:randomUUID(),owner,status:'running',progress:{stage:'queued',label:'任务已接收'},createdAt:Date.now(),expiresAt:Date.now()+15*60*1000,deadline:Date.now()+(config.timeout||90000)+30000}
   await put(job);return job
+ },async progress(job,progress){
+  const current=cache.get(job.id)||job
+  if(current.status!=='running')return
+  await put({...current,progress,updatedAt:Date.now()})
  },async finish(job,result,error){
-  const completed={...job,status:error?'failed':'completed',finishedAt:Date.now()}
+  const completed={...(cache.get(job.id)||job),status:error?'failed':'completed',finishedAt:Date.now()}
   if(error)completed.error={message:error.status?error.message:'回答生成失败，请检查后端日志。',status:error.status||500}
   else completed.result=result
   try{await put(completed)}catch(writeError){cache.set(job.id,{...job,status:'failed',error:{message:writeError.message,status:503}});throw writeError}
@@ -35,7 +39,7 @@ function createJobStore(config,dependencies={}){
   if(!job||job.owner!==owner)throw fault(404,'回答任务不存在。')
   if(job.expiresAt<Date.now()){cache.delete(id);throw fault(410,'回答任务已过期，请重新提问。')}
   if(job.status==='running'&&Date.now()>job.deadline)return {jobId:id,status:'failed',error:{message:'回答任务超时或容器已重启，请重新提问。',status:504}}
-  return {jobId:id,status:job.status,...(job.result?{result:job.result}:{}),...(job.error?{error:job.error}:{})}
+  return {jobId:id,status:job.status,createdAt:job.createdAt,deadline:job.deadline,progress:job.progress,...(job.result?{result:job.result}:{}),...(job.error?{error:job.error}:{})}
  }}
 }
 module.exports={createJobStore,ownerId}

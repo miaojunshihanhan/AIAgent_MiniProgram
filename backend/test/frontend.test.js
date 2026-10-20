@@ -7,7 +7,7 @@ const vm = require('node:vm')
 const root = path.resolve(__dirname, '../..')
 function page(relative, api, wx = {}) {
   let definition
-  vm.runInNewContext(fs.readFileSync(path.join(root, relative), 'utf8'), { require: () => api, Page: value => {definition = value}, wx, Date, encodeURIComponent })
+  vm.runInNewContext(fs.readFileSync(path.join(root, relative), 'utf8'), { require: () => api, Page: value => {definition = value}, wx, Date, encodeURIComponent, setInterval:()=>1, clearInterval:()=>{} })
   definition.data = JSON.parse(JSON.stringify(definition.data))
   definition.setData = values => Object.assign(definition.data, values)
   return definition
@@ -29,6 +29,28 @@ test('failed chat restores question and enables retry', async () => {
   app.setData({input:'原始问题'}); app.send(); await tick()
   assert.equal(app.data.sending, false); assert.equal(app.data.input, '原始问题'); assert.equal(app.data.error, '连接失败')
   assert.equal(app.data.messages.length, 0)
+})
+test('temporary polling failure preserves job and resumes it without submitting question again',async()=>{
+ const storage=new Map();let attempts=0
+ const app=page('pages/index/index.js',{chat:async(q,h,options)=>{
+  attempts++
+  if(attempts===1){options.onJob('original-job');options.onProgress({progress:{label:'正在读取相关材料'}});throw Object.assign(new Error('网络不稳定'),{jobId:'original-job'})}
+  assert.equal(options.jobId,'original-job');return {answer:'已恢复的原回答',citations:[],mode:'api'}
+ }},{setStorageSync:(k,v)=>storage.set(k,v),removeStorageSync:k=>storage.delete(k)})
+ app.setData({input:'我的问题'});app.send();await tick()
+ assert.equal(app.data.pendingJob,true);assert.equal(app.data.messages.length,1);assert.equal(app.data.waitingText,'正在读取相关材料')
+ assert.equal(storage.get('knowledge-chat-pending-v1').jobId,'original-job')
+ app.resumeAnswer();await tick()
+ assert.equal(attempts,2);assert.equal(app.data.messages.length,2);assert.equal(app.data.messages[1].content,'已恢复的原回答')
+ assert.equal(app.data.pendingJob,false);assert.equal(storage.has('knowledge-chat-pending-v1'),false)
+})
+test('reopening chat resumes saved job and keeps typed draft while waiting',async()=>{
+ let options
+ const saved={jobId:'saved-job',id:'old',question:'此前问题'}
+ const app=page('pages/index/index.js',{health:async()=>({modelMode:'api',documentCount:1}),chat:async(q,h,o)=>{options=o;return {answer:'恢复结果',citations:[],mode:'api'}}},
+ {getStorageSync:key=>key==='knowledge-chat-pending-v1'?saved:[{id:'old-q',role:'user',content:'此前问题'}],setStorageSync:()=>{},removeStorageSync:()=>{}})
+ app.onLoad();app.onInput({detail:{value:'正在输入的下个问题'}});await tick()
+ assert.equal(options.jobId,'saved-job');assert.equal(app.data.messages[1].content,'恢复结果');assert.equal(app.data.input,'正在输入的下个问题')
 })
 
 test('follow-up passes bounded history and material names without duplicating current question', async () => {
@@ -148,7 +170,7 @@ test('cached chat receives the same paragraph rendering after reload', async () 
 })
 
 test('health identifies the deployed conversation backend and configured model mode',async()=>{
-  const app=page('pages/index/index.js',{health:async()=>({modelMode:'api',modelConfigured:true,documentCount:3,runtimeVersion:'2026-10-20-chat-v3',capabilities:{conversation:true,materialTools:true,asyncChat:true}})})
+  const app=page('pages/index/index.js',{health:async()=>({modelMode:'api',modelConfigured:true,documentCount:3,runtimeVersion:'2026-10-20-chat-v4',capabilities:{conversation:true,materialTools:true,asyncChat:true,chatProgress:true}})})
   app.refreshHealth();await tick()
   assert.equal(app.data.status,'模型 API 模式 · 3 份材料')
 })

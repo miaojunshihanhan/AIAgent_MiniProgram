@@ -38,7 +38,7 @@ function createConfig(env, fallback = {}) {
     apiUrl: value('MODEL_API_URL', 'API_URL'), apiKey,
     model: value('MODEL_NAME', 'MODEL'),
     enableThinking: value('MODEL_ENABLE_THINKING') === 'false' ? false : undefined,
-    timeout: Number(value('MODEL_TIMEOUT_MS') || 45000),
+    timeout: Number(value('MODEL_TIMEOUT_MS') || 90000),
     materialsRoot: path.resolve(root, value('MATERIALS_ROOT') || 'materials'),
     dataRoot: path.resolve(root, value('DATA_ROOT') || 'data')
   }

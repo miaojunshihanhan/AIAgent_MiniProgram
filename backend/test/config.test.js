@@ -21,4 +21,6 @@ test('runtime model aliases override local file values and explicit mock is pres
 test('local defaults work and unused template MySQL variables do not alter storage', () => {
   const config = createConfig({ MYSQL_ADDRESS: 'unused', MYSQL_USERNAME: 'unused', MYSQL_PASSWORD: 'unused' })
   assert.equal(config.storage, 'local'); assert.equal(config.port, 3000); assert.equal(config.mode, 'mock')
+  assert.equal(config.timeout,90000)
+  assert.equal(createConfig({MODEL_TIMEOUT_MS:'45000'}).timeout,45000)
 })

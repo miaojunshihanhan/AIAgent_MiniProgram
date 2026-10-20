@@ -26,10 +26,11 @@
       </view>
     </view>
   </view>
-  <view wx:if="{{sending}}" class="thinking">正在检索材料并组织回答…</view>
+  <view wx:if="{{sending}}" class="thinking"><view>{{waitingText}} · 已等待 {{elapsed}} 秒</view><view wx:if="{{elapsed >= 15}}" class="wait-note">模型仍在处理，可先浏览资料库；返回后可继续获取回答。</view><button class="small-button" bindtap="pauseWaiting">暂停等待</button></view>
+  <view wx:if="{{pendingJob && !sending}}" class="thinking"><view>原回答任务已保留，无需重新提问。</view><button class="small-button" bindtap="resumeAnswer">继续获取回答</button><button class="small-button muted-button" bindtap="discardPending">放弃获取，开始新问题</button></view>
   <view class="scroll-bottom"></view>
 </scroll-view>
 <view class="composer"><view wx:if="{{error}}" class="error-banner">{{error}}</view>
-  <view class="input-row"><textarea class="question-input" value="{{input}}" bindinput="onInput" placeholder="输入与材料有关的问题…" maxlength="20000" auto-height disabled="{{sending}}" show-confirm-bar="{{false}}"/><button class="send-button" bindtap="send" loading="{{sending}}" disabled="{{sending || !input}}">发送</button></view>
+  <view class="input-row"><textarea class="question-input" value="{{input}}" bindinput="onInput" placeholder="输入与材料有关的问题…" maxlength="2000" auto-height show-confirm-bar="{{false}}"/><button class="send-button" bindtap="send" loading="{{sending}}" disabled="{{sending || pendingJob || !input}}">发送</button></view>
   <view class="composer-note">支持多轮追问 · 最近对话随提问发送给模型 · 来源直接展示</view>
 </view>

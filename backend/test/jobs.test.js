@@ -33,7 +33,7 @@ test('submit returns before model finishes; another replica polls result and pre
  let result
  for(let i=0;i<30;i++){result=await (await second(route)).json();if(result.status==='completed')break;await tick()}
  assert.equal(result.status,'completed');assert.equal(result.result.answer,'模型生成结果');assert.equal(called,1)
- assert.equal(result.result.runtimeVersion,'2026-10-20-chat-v3')
+ assert.equal(result.result.runtimeVersion,'2026-10-20-chat-v4')
 })
 test('preset completes immediately and worker failures reach client without generic connection error',async t=>{
  const {serve}=await setup(t,async()=>{throw Object.assign(new Error('模型服务返回错误（HTTP 401）'),{status:502})})
@@ -49,11 +49,29 @@ test('job store surfaces write failure, bounds lifetime, and persists no questio
  const stored=new Map(),config={storage:'cos',timeout:1}
  const store=createJobStore(config,{saveChatJob:async job=>stored.set(job.id,JSON.parse(JSON.stringify(job))),loadChatJob:async id=>stored.get(id)})
  const job=await store.create('owner');assert.equal(stored.get(job.id).status,'running');assert.equal(stored.get(job.id).question,undefined)
+ await store.progress(job,{stage:'reading',label:'正在读取相关材料'})
  const replica=createJobStore(config,{saveChatJob:async()=>{},loadChatJob:async id=>stored.get(id)})
+ assert.equal((await replica.get(job.id,'owner')).progress.stage,'reading')
  stored.get(job.id).deadline=Date.now()-1;assert.equal((await replica.get(job.id,'owner')).status,'failed')
  stored.get(job.id).expiresAt=Date.now()-1;await assert.rejects(replica.get(job.id,'owner'),/过期/)
  const broken=createJobStore(config,{saveChatJob:async()=>{throw new Error('denied')}})
  await assert.rejects(broken.create('owner'),/PutObject/)
+})
+test('polling a saved task never re-submits model input and reports transient recovery',async()=>{
+ let polls=0;const progress=[]
+ const {api,calls}=client(args=>{
+  polls++
+  if(polls<=5)return args.fail({errMsg:'102002 system error'})
+  args.success({statusCode:200,data:{status:'completed',result:{answer:'原回答'}}})
+ })
+ const output=await api.chat('原问题',[],{jobId:'retained',onProgress:value=>progress.push(value)})
+ assert.equal(output.answer,'原回答');assert.equal(calls.length,6)
+ assert.ok(calls.every(call=>call.method==='GET'));assert.match(progress[1].progress.label,/恢复连接/)
+})
+test('exhausted transient retries retain job ID so user can resume',async()=>{
+ const {api,calls}=client(args=>args.fail({errMsg:'102002'}))
+ await assert.rejects(api.chat('test',[],{jobId:'kept'}),error=>error.jobId==='kept'&&!error.terminal)
+ assert.equal(calls.length,9)
 })
 function client(handler){
  const module={exports:{}},calls=[]

@@ -1,11 +1,12 @@
 const api = require('../../services/api')
 const CACHE = 'knowledge-chat-v1'
+const PENDING = 'knowledge-chat-pending-v1'
 // Render explicit line blocks so Skyline preserves model paragraphs and empty lines.
 function displayMessage(message) {
   return Object.assign({}, message, { citations: message.citations || [], lines: String(message.content || '').split(/\r\n|\r|\n/).map(line => line || '\u00a0') })
 }
 Page({
-  data: { input: '', messages: [], sending: false, ready: false, mode: '', status: '正在连接后端…', error: '', scrollInto: '', documentCount: 0 },
+  data: { input: '', messages: [], sending: false, ready: false, mode: '', status: '正在连接后端…', error: '', scrollInto: '', documentCount: 0, waitingText: '', elapsed: 0, pendingJob: false },
   onLoad() {
     this._closed = false
     try {
@@ -14,13 +15,14 @@ Page({
     } catch (_) {}
     this.refreshHealth()
     this.refreshSources()
+    try { const pending = wx.getStorageSync(PENDING); if (pending && pending.jobId) { this._pending = pending; this.setData({ pendingJob: true }); this.resumeAnswer() } } catch (_) {}
   },
-  onUnload() { this._closed = true },
+  onUnload() { this._closed = true; this.stopTimer() },
   onShow() { if (this.data.mode) this.refreshHealth() },
   refreshHealth() {
     this.setData({ status: '正在连接后端…' })
     api.health().then(res => this.setData({ ready: true, mode: res.modelMode, documentCount: res.documentCount,
-      status: (!res.capabilities || !res.capabilities.materialTools || !res.capabilities.conversation || !res.capabilities.asyncChat ? '云端仍为旧版，请部署新版后端' : (res.modelMode === 'mock' ? '本地摘录模式' : (res.modelConfigured ? '模型 API 模式' : '模型 API 待配置'))) + ' · ' + res.documentCount + ' 份材料' }))
+      status: (!res.capabilities || !res.capabilities.materialTools || !res.capabilities.conversation || !res.capabilities.asyncChat || !res.capabilities.chatProgress ? '云端仍为旧版，请部署新版后端' : (res.modelMode === 'mock' ? '本地摘录模式' : (res.modelConfigured ? '模型 API 模式' : '模型 API 待配置'))) + ' · ' + res.documentCount + ' 份材料' }))
       .catch(err => this.setData({ ready: false, status: err.message }))
   },
   onInput(event) { this.setData({ input: event.detail.value }) },
@@ -35,25 +37,48 @@ Page({
   },
   send() {
     const question = this.data.input.trim()
-    if (!question || this.data.sending) return
+    if (!question || this.data.sending || this._pending) return
     this.setData({ sending: true, input: '', error: '' })
     const id = String(Date.now())
-    let left = 12000
+    let left = 6000
     const history = []
-    this.data.messages.slice(-20).reverse().forEach(message => {
+    this.data.messages.slice(-8).reverse().forEach(message => {
       if (!left) return
       const references = (message.citations || []).map(source => source.title).filter(Boolean)
-      const content = (message.content + (references.length ? '\n本轮参考材料：' + references.join('、') : '')).slice(-Math.min(left, 4000))
+      const raw = message.content + (references.length ? '\n本轮参考材料：' + references.join('、') : '')
+      const limit = Math.min(left, message.role === 'assistant' ? 1000 : 1500)
+      const head = Math.floor(limit * 0.7), tail = Math.max(0, limit - head - 1)
+      const content = raw.length > limit ? raw.slice(0, head) + '…' + (tail ? raw.slice(-tail) : '') : raw
       left -= content.length
       history.unshift({ role: message.role, content })
     })
     this.saveMessages(this.data.messages.concat({ id: id + '-q', role: 'user', content: question }))
-    api.chat(question, history).then(res => {
+    this.runAnswer(question, history, id)
+  },
+  stopTimer() { if (this._waitTimer) clearInterval(this._waitTimer); this._waitTimer = null },
+  runAnswer(question, history, id, jobId) {
+    this._paused = false
+    this.setData({ sending: true, waitingText: jobId ? '正在恢复原回答…' : '正在提交问题…', error: '', elapsed: 0 })
+    const started = Date.now(); this.stopTimer()
+    this._waitTimer = setInterval(() => { if (!this._closed) this.setData({ elapsed: Math.floor((Date.now() - started) / 1000) }) }, 1000)
+    api.chat(question, history, { jobId, isCancelled: () => this._closed || this._paused,
+      onJob: value => { this._pending = {jobId:value,question,id}; try { wx.setStorageSync(PENDING, this._pending) } catch (_) {} },
+      onProgress: value => { if (!this._closed && value.progress) this.setData({ waitingText: value.progress.label || '正在等待模型回答…' }) }
+    }).then(res => {
+      if (this._closed) return
       this.saveMessages(this.data.messages.concat({ id: id + '-a', role: 'assistant', content: res.answer, citations: res.citations, mode: res.mode }))
       this.refreshSources(id + '-a')
-    }).catch(err => { this.saveMessages(this.data.messages.filter(message => message.id !== id + '-q')); this.setData({ error: err.message, input: question }) })
-      .finally(() => this.setData({ sending: false }))
+      this.clearPending()
+    }).catch(err => {
+      if (this._closed) return
+      if (err.jobId && !err.terminal) this.setData({ error: err.message, pendingJob: true })
+      else { this.clearPending(); this.saveMessages(this.data.messages.filter(message => message.id !== id + '-q')); this.setData({ error: err.message, input: this.data.input || question }) }
+    }).finally(() => { this.stopTimer(); if (!this._closed) this.setData({ sending: false }) })
   },
+  clearPending() { this._pending = null; this.setData({ pendingJob: false }); try { if (wx.removeStorageSync) wx.removeStorageSync(PENDING) } catch (_) {} },
+  resumeAnswer() { if (this.data.sending || !this._pending) return; const p = this._pending; this.runAnswer(p.question, [], p.id, p.jobId) },
+  pauseWaiting() { this._paused = true; this.setData({ waitingText: '正在暂停等待，后台任务仍会继续…' }) },
+  discardPending() { this.clearPending(); this.setData({ error: '' }) },
   updateSource(messageId, chunkId, patch) {
     if (this._closed) return
     this.setData({ messages: this.data.messages.map(message => message.id !== messageId ? message : Object.assign({}, message, {
@@ -92,6 +117,6 @@ Page({
   openLibrary() { wx.navigateTo({ url: '/pages/library/library' }) },
   clearChat() {
     if (this.data.sending) return
-    wx.showModal({ title: '清空本机对话', content: '将删除本机保存的消息和引用，不会删除原材料。', success: res => { if (res.confirm) { this.saveMessages([]); this.setData({ error: '' }) } } })
+    wx.showModal({ title: '清空本机对话', content: '将删除本机保存的消息和引用，不会删除原材料。', success: res => { if (res.confirm) { this.clearPending(); this.saveMessages([]); this.setData({ error: '' }) } } })
   }
 })

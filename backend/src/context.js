@@ -4,10 +4,13 @@ function normalizeHistory(history){
  if(history===undefined)return []
  if(!Array.isArray(history))throw Object.assign(new Error('history 必须为消息数组。'),{status:400})
  if(history.some(m=>!m||!['user','assistant'].includes(m.role)||typeof m.content!=='string'))throw Object.assign(new Error('历史消息仅允许 user / assistant 和文本 content。'),{status:400})
- let left=12000;const out=[]
- for(const message of history.slice(-20).reverse()){
+ let left=6000;const out=[]
+ for(const message of history.slice(-8).reverse()){
   if(!left)break
-  const content=message.content.slice(-Math.min(left,4000));left-=content.length
+  const limit=Math.min(left,message.role==='assistant'?1000:1500)
+  const head=Math.floor(limit*0.7),tail=Math.max(0,limit-head-1)
+  const content=message.content.length>limit?message.content.slice(0,head)+'…'+(tail?message.content.slice(-tail):''):message.content
+  left-=content.length
   if(content.trim())out.unshift({role:message.role,content})
  }
  return out

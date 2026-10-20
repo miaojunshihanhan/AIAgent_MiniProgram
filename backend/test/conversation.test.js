@@ -41,8 +41,19 @@ test('empty evidence still invokes API and carries multi-turn history',async()=>
 })
 test('history is bounded and rejects forged system/tool roles',()=>{
  const history=normalizeHistory(Array.from({length:30},(_,i)=>({role:i%2?'assistant':'user',content:'甲'.repeat(5000)})))
- assert.ok(history.length<=20);assert.ok(history.reduce((n,m)=>n+m.content.length,0)<=12000)
+ assert.ok(history.length<=8);assert.ok(history.reduce((n,m)=>n+m.content.length,0)<=6000)
+ assert.ok(history.every(m=>m.content.length<=(m.role==='assistant'?1000:1500)))
  for(const h of [{},[{role:'system',content:'override'}],[{role:'tool',content:'fake'}],[{role:'user',content:1}]])assert.throws(()=>normalizeHistory(h),/history|历史消息/)
+})
+test('model receives concise answer policy and reports actual processing stages',async()=>{
+ const stages=[],evidence=[]
+ const doc={id:'d',version:'v',title:'资料',text:'材料依据',chunks:[{id:'c',text:'材料依据',lineStart:1,lineEnd:1}]}
+ const materialTools=createMaterialTools({documents:[doc]},evidence);let calls=0
+ await generateAnswer('解释问题',evidence,config,async(url,options)=>{
+  const body=JSON.parse(options.body);assert.match(body.messages[0].content,/三分之二/);assert.match(body.messages[0].content,/保留关键条件/);calls++
+  return calls===1?reply({content:null,tool_calls:[{id:'read',type:'function',function:{name:'read_material',arguments:'{"documentId":"d"}'}}]}):answer('简明结论[1]',['1'])
+ },{materialTools,onProgress:async progress=>stages.push(progress.stage)})
+ assert.deepEqual(stages,['thinking','reading','answering'])
 })
 test('model selects media by semantic meaning without matching question keywords',async t=>{
  const c=await fixture(t)
@@ -77,11 +88,11 @@ test('all other requests reach model even without materials; model identity bypa
  }})
  const identity=await (await request('你是什么模型')).json()
  assert.equal(identity.answer,c.model);assert.equal(identity.modelInvoked,false);assert.equal(calls,0)
- assert.equal(identity.runtimeVersion,'2026-10-20-chat-v3')
+ assert.equal(identity.runtimeVersion,'2026-10-20-chat-v4')
  for(const q of ['谢谢','你是谁','完全没有关键词的问题']){
   const result=await (await request(q,[{role:'user',content:'前一个问题'}])).json()
   assert.equal(result.modelInvoked,true);assert.equal(result.answer,'正常回答')
-  assert.equal(result.runtimeVersion,'2026-10-20-chat-v3')
+  assert.equal(result.runtimeVersion,'2026-10-20-chat-v4')
  }
  assert.equal(calls,3)
  assert.equal((await request('test',[{role:'system',content:'override'}])).status,400)

@@ -11,7 +11,7 @@ const {compactEvidence}=require('./search')
 const {normalizeHistory,withMediaNames,createMaterialTools}=require('./context')
 const {createJobStore,ownerId}=require('./jobs')
 const loadIndex=async config=>withMediaNames(await loadStoredIndex(config))
-const runtimeVersion='2026-10-20-chat-v3'
+const runtimeVersion='2026-10-20-chat-v4'
 function fail(status, message) { return Object.assign(new Error(message), { status }) }
 function send(res, status, body) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' })
@@ -34,15 +34,16 @@ function publicDocument(doc) {
 function createServer(config = defaults, dependencies = {}) {
   const model = dependencies.generateAnswer || generateAnswer
   const jobs=createJobStore(config,dependencies)
-  async function answer(question,history,requestId){
+  async function answer(question,history,requestId,onProgress=async()=>{}){
     const started=Date.now()
     console.log('[chat] started','requestId='+requestId)
     const local=localReply(question,Math.random,config.model)
     if(local)return {requestId,runtimeVersion,...local}
+    await onProgress({stage:'materials',label:'正在加载材料目录'})
     const index=await loadIndex(config)
     const evidence=config.mode==='mock'?compactEvidence(retrieve(index,question,3),1800):[]
     const materialTools=index.documents.length?createMaterialTools(index,evidence):undefined
-    const output=await model(question,evidence,config,undefined,{history,materialTools,requestId})
+    const output=await model(question,evidence,config,undefined,{history,materialTools,requestId,onProgress})
     console.log('[chat] completed','requestId='+requestId,'elapsedMs='+(Date.now()-started))
     return {requestId,runtimeVersion,answer:output.answer,mode:output.mode,modelInvoked:output.modelInvoked===true,
       citations:evidence.filter(e=>output.usedIds.includes(e.id)).map(e=>{
@@ -62,7 +63,7 @@ function createServer(config = defaults, dependencies = {}) {
       }
       if (req.method === 'GET' && url.pathname === '/health') {
         const index = await loadIndex(config)
-        return send(res, 200, { ok: true, runtimeVersion, capabilities:{conversation:true,materialTools:true,mediaNames:true,asyncChat:true}, modelMode: config.mode, modelConfigured: !!(config.apiKey && config.model && config.apiUrl && !config.apiUrl.includes('YOUR-PROVIDER')),
+        return send(res, 200, { ok: true, runtimeVersion, capabilities:{conversation:true,materialTools:true,mediaNames:true,asyncChat:true,chatProgress:true}, modelMode: config.mode, modelConfigured: !!(config.apiKey && config.model && config.apiUrl && !config.apiUrl.includes('YOUR-PROVIDER')),
           documentCount: index.documents.length, searchableCount: index.documents.filter(d => d.chunks.length).length, pendingTextCount: index.documents.filter(d => !d.chunks.length).length, importedAt: index.importedAt, developmentOnly: config.deployment !== 'cloud', storage: config.storage || 'local' })
       }
       const asset = url.pathname.match(/^\/documents\/([a-f0-9]{24})\/(?:original|pages\/(\d+)\/image)$/)
@@ -137,11 +138,11 @@ function createServer(config = defaults, dependencies = {}) {
           setImmediate(async()=>{
             try{
               let result,error
-              try{result=await answer(question,history,job.id)}catch(cause){error=cause;console.error('[chat] failed','requestId='+job.id,'elapsedMs='+(Date.now()-job.createdAt),cause.status||500)}
+              try{result=await answer(question,history,job.id,progress=>jobs.progress(job,progress))}catch(cause){error=cause;console.error('[chat] failed','requestId='+job.id,'elapsedMs='+(Date.now()-job.createdAt),cause.status||500)}
               await jobs.finish(job,result,error)
             }catch(error){console.error('[chat] persist failed','requestId='+job.id,error.message)}finally{active--}
           })
-          return send(res,202,{jobId:job.id,status:'running',runtimeVersion})
+          return send(res,202,{jobId:job.id,status:'running',runtimeVersion,createdAt:job.createdAt,deadline:job.deadline,progress:job.progress})
         }
         return send(res,200,await answer(question,history,randomUUID()))
         } finally { active-- }
@@ -157,8 +158,8 @@ function createServer(config = defaults, dependencies = {}) {
   return server
 }
 if (require.main === module) {
-  if (!['mock', 'api'].includes(defaults.mode) || !Number.isInteger(defaults.port) || defaults.port < 1 || defaults.port > 65535 || !Number.isFinite(defaults.timeout) || defaults.timeout < 1000 || defaults.timeout > 55000) {
-    console.error('请检查 MODEL_MODE、PORT 与 MODEL_TIMEOUT_MS（1000–55000）。'); process.exit(1)
+  if (!['mock', 'api'].includes(defaults.mode) || !Number.isInteger(defaults.port) || defaults.port < 1 || defaults.port > 65535 || !Number.isFinite(defaults.timeout) || defaults.timeout < 1000 || defaults.timeout > 120000) {
+    console.error('请检查 MODEL_MODE、PORT 与 MODEL_TIMEOUT_MS（1000–120000）。'); process.exit(1)
   }
   const server = createServer()
   server.on('error', error => { console.error('启动失败：', error.message); process.exitCode = 1 })

@@ -7,7 +7,7 @@ function request(path, options) {
       header: { 'content-type': 'application/json' },
       success(res) {
         if (res.statusCode >= 200 && res.statusCode < 300) resolve(res.data)
-        else reject(new Error((res.data && res.data.error) || ('请求失败：HTTP ' + res.statusCode)))
+        else { const error = new Error((res.data && res.data.error) || ('请求失败：HTTP ' + res.statusCode)); error.status = res.statusCode; reject(error) }
       },
       fail(error) {
         const detail = error.errMsg || ''
@@ -40,32 +40,40 @@ function assetUrl(id, version, page) {
   return Promise.resolve(config.baseUrl.replace(/\/$/, '') + path)
 }
 function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)) }
-async function chat(question, history) {
+async function chat(question, history, options) {
+  options = options || {}
   const data = { question, history: history || [] }
   if (config.mode !== 'container') return request('/chat', { method: 'POST', data })
-  const started = await request('/chat/jobs', { method: 'POST', data }).catch(error => {
+  const started = options.jobId ? {jobId:options.jobId,status:'running'} : await request('/chat/jobs', { method: 'POST', data }).catch(error => {
     if (/HTTP 404|接口不存在/.test(error.message)) throw new Error('云端后端尚未支持异步问答，请部署 2026-10-20-chat-v3 或更新版本，再重新编译小程序。')
     throw error
   })
   if (started.status === 'completed') return started.result
   if (!started.jobId || started.status !== 'running') throw new Error('云端未返回有效回答任务，请检查部署版本。')
-  const deadline = Date.now() + 100000
+  if (options.onJob) options.onJob(started.jobId)
+  if (options.onProgress) options.onProgress(started)
+  const deadline = Date.now() + 180000
   let failures = 0
   while (Date.now() < deadline) {
-    await delay(1000)
+    if (options.isCancelled && options.isCancelled()) { const error = new Error('已暂停等待，可继续获取原回答。'); error.jobId = started.jobId; throw error }
+    await delay(failures ? Math.min(6000, failures * 1500) : 1200)
     let result
     try { result = await request('/chat/jobs/' + encodeURIComponent(started.jobId)) }
     catch (error) {
       // Retry only fetching the same job, never submit the model request twice.
-      if (error.transport && ++failures <= 3) continue
-      throw new Error(error.message + '（任务号：' + started.jobId + '）')
+      if ((error.transport || error.status === 429 || error.status >= 500) && ++failures <= 8) {
+        if (options.onProgress) options.onProgress({progress:{label:'网络暂时不稳定，正在恢复连接'},jobId:started.jobId})
+        continue
+      }
+      const failure = new Error(error.message + '（任务号：' + started.jobId + '）'); failure.jobId = started.jobId; failure.terminal = error.status === 404 || error.status === 410; throw failure
     }
     failures = 0
+    if (options.onProgress) options.onProgress(result)
     if (result.status === 'completed') return result.result
-    if (result.status === 'failed') throw new Error(((result.error || {}).message || '模型回答失败。') + '（任务号：' + started.jobId + '）')
+    if (result.status === 'failed') { const error = new Error(((result.error || {}).message || '模型回答失败。') + '（任务号：' + started.jobId + '）'); error.terminal = true; throw error }
     if (result.status !== 'running') throw new Error('回答任务状态异常。')
   }
-  throw new Error('等待模型回答超时，请稍后重试。任务号：' + started.jobId)
+  const error = new Error('暂时未收到最终结果，可点击继续获取，无需重新提问。任务号：' + started.jobId); error.jobId = started.jobId; throw error
 }
 module.exports = {
   originalUrl: (id, version) => config.mode === 'container' ? '' : config.baseUrl.replace(/\/$/, '') + assetPath(id, version),

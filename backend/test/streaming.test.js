@@ -59,7 +59,7 @@ test('truncated streams and invalid citations fail without extra model requests'
 test('prepared context covers documents on keyword misses and includes media past first catalog page',()=>{
  const documents=Array.from({length:45},(_,i)=>({id:String(i),version:'v',title:'材料'+i,kind:i===44?'video':'text',text:'完全不同的知识',chunks:[{id:'c'+i,text:'完全不同的知识',lineStart:1,lineEnd:1,metadataOnly:i===44}]}))
  const p=prepareMaterials({documents},'这个问题没有相同关键词',[],1000)
- assert.equal(p.materialTools.catalog.materials.length,45);assert.equal(p.evidence.length,44)
+ assert.equal(p.materialTools.catalog.materials.length,45);assert.equal(p.evidence.length,45)
  assert.equal(p.materialTools.selectMedia(['44']).length,1)
  assert.ok(p.stats.textChars<=1000);assert.throws(()=>p.materialTools.selectMedia(['missing']))
 })

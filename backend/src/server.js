@@ -13,7 +13,7 @@ const {createJobStore,ownerId}=require('./jobs')
 const {prepareMaterials}=require('./materials')
 const {attachChatSocket}=require('./socket')
 const loadIndex=async config=>withMediaNames(await loadStoredIndex(config))
-const runtimeVersion='2026-10-20-chat-v7'
+const runtimeVersion='2026-10-20-chat-v8'
 function fail(status, message) { return Object.assign(new Error(message), { status }) }
 function send(res, status, body) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' })

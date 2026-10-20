@@ -33,7 +33,7 @@ test('submit returns before model finishes; another replica polls result and pre
  let result
  for(let i=0;i<100;i++){result=await (await second(route)).json();if(result.status==='completed')break;await new Promise(resolve=>setTimeout(resolve,10))}
  assert.equal(result.status,'completed');assert.equal(result.result.answer,'模型生成结果');assert.equal(called,1)
- assert.equal(result.result.runtimeVersion,'2026-10-20-chat-v7')
+ assert.equal(result.result.runtimeVersion,'2026-10-20-chat-v8')
 })
 test('preset completes immediately and worker failures reach client without generic connection error',async t=>{
  const {serve}=await setup(t,async()=>{throw Object.assign(new Error('模型服务返回错误（HTTP 401）'),{status:502})})

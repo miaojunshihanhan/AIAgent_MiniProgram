@@ -94,9 +94,17 @@ test('API adapter sends credentials only server-side and reads cited answers', a
   assert.deepEqual(output.usedIds, ['1']); assert.equal(output.mode, 'api')
 })
 test('invented and inconsistent citations are rejected', async () => {
-  for (const value of [{answer:'答案[9]',usedIds:['9']}, {answer:'答案[1]',usedIds:[]}, {answer:'答案',usedIds:['1']}]) {
+  for (const value of [{answer:'答案[9]',usedIds:['9']}, {answer:'答案[9]',usedIds:[]}]) {
     await assert.rejects(generateAnswer('问题', evidence, apiConfig, modelResponse(value)), /引用/)
   }
+})
+test('valid inline citations repair redundant usedIds without inventing sources',async()=>{
+ for(const usedIds of [[],['9'],['1','9']]){
+  const result=await generateAnswer('问题',evidence,apiConfig,modelResponse({answer:'答案[1]',usedIds}))
+  assert.deepEqual(result.usedIds,['1'])
+ }
+ const result=await generateAnswer('问题',evidence,apiConfig,modelResponse({answer:'答案',usedIds:['1','9']}))
+ assert.deepEqual(result.usedIds,[])
 })
 test('missing API configuration and upstream errors surface clearly', async () => {
   await assert.rejects(generateAnswer('问题', evidence, {...apiConfig,apiKey:''}), /填写/)

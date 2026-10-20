@@ -33,7 +33,7 @@ try {
             if ($source.Contains($oldRefusal)) { throw "Old refusal code in $name" }
             if ($name -eq 'src/model.js' -and -not $source.Contains('materialTools')) { throw 'Missing model material tools' }
             if ($name -eq 'src/model.js' -and -not $source.Contains('stream:true')) { throw 'Missing streaming generation' }
-            if ($name -eq 'src/server.js' -and -not $source.Contains('2026-10-20-chat-v7')) { throw 'Unexpected runtime version' }
+            if ($name -eq 'src/server.js' -and -not $source.Contains('2026-10-20-chat-v8')) { throw 'Unexpected runtime version' }
         } finally { $reader.Dispose() }
     }
 } finally { $archive.Dispose() }

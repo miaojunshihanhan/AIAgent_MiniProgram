@@ -83,11 +83,11 @@ test('all other requests reach model even without materials; model identity bypa
  }})
  const identity=await (await request('你是什么模型')).json()
  assert.equal(identity.answer,'你好！我是'+c.model+'，想问些什么？');assert.equal(identity.modelInvoked,false);assert.equal(calls,0)
- assert.equal(identity.runtimeVersion,'2026-10-20-chat-v7')
+ assert.equal(identity.runtimeVersion,'2026-10-20-chat-v8')
  for(const q of ['谢谢','你是谁','完全没有关键词的问题']){
   const result=await (await request(q,[{role:'user',content:'前一个问题'}])).json()
   assert.equal(result.modelInvoked,true);assert.equal(result.answer,'正常回答')
-  assert.equal(result.runtimeVersion,'2026-10-20-chat-v7')
+  assert.equal(result.runtimeVersion,'2026-10-20-chat-v8')
  }
  assert.equal(calls,3)
  assert.equal((await request('test',[{role:'system',content:'override'}])).status,400)

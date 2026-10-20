@@ -83,7 +83,7 @@ API 模式除三种预设问题外都调用模型，不再以关键词命中与�
 
 ### 云托管问答等待方式（chat-v3）
 
-最新版本为 **chat-v7**：保留单次模型调用、SSE 生成和 WebSocket 实时展示，并修复无效可选媒体附件导致整条回答失败的问题。无效附件会被跳过，有效正文、引用和附件继续返回；正文引用仍严格校验。部署后 `/health` 应返回 `2026-10-20-chat-v7`，且 `capabilities.streaming`、`capabilities.singleModelCall` 为 true。本次从 chat-v6 升级只需部署后端，无需重新导入材料或更新小程序；旧失败任务需重新提问。
+最新版本为 **chat-v8**：保留单次模型调用、SSE 生成和 WebSocket 实时展示。媒体在生成前分配稳定证据编号；正文有效编号与 usedIds 不一致时自动整理，误放入 usedIds 的有效媒体 documentId 按附件处理，无效可选附件跳过。不存在的正文编号仍拒绝，绝不按目录顺序猜测来源。部署后 `/health` 应返回 `2026-10-20-chat-v8`，且 `capabilities.streaming`、`capabilities.singleModelCall` 为 true。从 chat-v6/v7 升级只需部署后端，无需重新导入材料或更新小程序；旧失败任务需重新提问。
 
 云托管小程序通过 `/chat/jobs` 提交任务，再通过 `wx.cloud.connectContainer` 订阅实时文字；连接失败自动获取原任务快照，不重新调用模型。COS 任务状态需要 `chat-jobs/` 子目录读写权限。分阶段耗时与部署说明见 backend/DEPLOY.md。
 

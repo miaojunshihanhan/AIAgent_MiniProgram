@@ -4,15 +4,21 @@
 
 ## 环境变量读取说明
 
+### chat-v8：视频引用编号与字段兼容
+
+当前版本为 `2026-10-20-chat-v8`。为本轮目录中可用媒体预先分配 evidenceId，并明确向模型标记 metadataOnly，避免模型猜测尚未分配的媒体编号。正文引用本轮已有证据时，以正文编号整理 usedIds；可从目录精确核验的媒体 documentId 误填 usedIds 时按附件处理。未在正文使用的文本引用和无效 usedIds 元数据丢弃；正文不存在的编号仍拒绝，不按文件名或目录顺序补造来源，不增加模型请求。
+
+发布新后端并分配流量后，确认 `/health` 的 runtimeVersion 为 `2026-10-20-chat-v8`，再重新提交问题。无需重新导入材料或更新小程序。日志 `citations_normalized` 记录修复计数，`citation_validation_failed` 记录无法匹配的正文引用计数，均带 requestId，不记录正文和文件名。旧失败任务不会自动重跑。
+
 ### chat-v7：媒体附件容错
 
-当前修复版本为 `2026-10-20-chat-v7`。模型返回的可选媒体字段为 null、类型错误、未知 ID、非媒体 ID、未展示 ID 或超出 6 项时，跳过无效项，保留正文和有效附件；正文引用仍严格校验，不增加模型请求。模型必须复制本轮目录中图片/视频的 documentId，不能填文件名、URL 或证据编号。
+chat-v7 引入可选媒体容错，chat-v8 保留此能力。模型返回的可选媒体字段为 null、类型错误、未知 ID、非媒体 ID、未展示 ID 或超出 6 项时，跳过无效项，保留正文和有效附件；正文引用仍核验本轮来源，不增加模型请求。模型必须复制本轮目录中图片/视频的 documentId，不能填文件名、URL 或证据编号。
 
-部署后请求 `/health`，确认 `runtimeVersion` 为 `2026-10-20-chat-v7`。本次仅修改后端，无需重新导入材料或更新小程序；旧失败任务不会重新执行，请重新提问。后台可按任务号查询 `[model] media_attachments_skipped requestId=...`，日志仅含跳过原因类别及数量。
+后台可按任务号查询 `[model] media_attachments_skipped requestId=...`，日志仅含跳过原因类别及数量。
 
 ### chat-v6：单次模型调用与实时流式
 
-chat-v6 引入单次模型调用与实时流式，当前 chat-v7 保留这些能力。`/health` 的 `streaming`、`singleModelCall`、`timings` 均为 true。从更早版本升级时需要部署后端并重新编译、发布小程序；无需重新导入材料。
+chat-v6 引入单次模型调用与实时流式，当前 chat-v8 保留这些能力。`/health` 的 `streaming`、`singleModelCall`、`timings` 均为 true。从更早版本升级时需要部署后端并重新编译、发布小程序；无需重新导入材料。
 
 - 模型接口使用 SSE `stream:true`，小程序通过 `wx.cloud.connectContainer` 的 WebSocket 接收增量文字。服务必须支持 WebSocket Upgrade；保持现有微信网关身份校验及私有访问方式。连接失败时自动查询同一个任务的增量快照，不重复提交模型。
 - 每个非预设问题只请求模型一次，不再执行工具调用循环。后端一次准备材料：目录上限 18000 字符、正文上限 24000 字符；每个文档先覆盖一段，再补充相关段落和其他段落。关键词评分仅帮助排序，未命中仍提供目录和正文并正常调用模型。超大资料库只提供预算内的部分内容，不能保证穷尽全文。
@@ -124,7 +130,7 @@ knowledge-agent/previews/文档ID/版本/页号.png
 
 每次改后端后，在项目根目录先执行 `powershell -NoProfile -ExecutionPolicy Bypass -File backend/scripts/package-cloud.ps1`，重新生成并校验 `backend/cloudrun-upload.zip`。旧 ZIP 不会随源码修改自动更新。打包只包含运行代码、Dockerfile 和依赖清单，不包含密钥、材料或本地索引。
 
-部署发布并分配流量后，在小程序请求 `/health`，确认 `runtimeVersion` 为 `2026-10-20-chat-v7`，且 `capabilities.materialTools`、`capabilities.conversation` 和 `capabilities.asyncChat` 为 true。没有这些字段说明流量还在旧后端；仅在本机重新编译小程序不会更新云托管。新版小程序会在顶部提示“云端仍为旧版，请部署新版后端”。
+部署发布并分配流量后，在小程序请求 `/health`，确认 `runtimeVersion` 为 `2026-10-20-chat-v8`，且 `capabilities.materialTools`、`capabilities.conversation` 和 `capabilities.asyncChat` 为 true。没有这些字段说明流量还在旧后端；仅在本机重新编译小程序不会更新云托管。新版小程序会在顶部提示“云端仍为旧版，请部署新版后端”。
 
 ### 问答超时修正（chat-v3）
 

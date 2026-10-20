@@ -4,11 +4,40 @@ const assert=require('node:assert/strict')
 const {createMaterialTools,withMediaNames}=require('../src/context')
 const {generateAnswer,readAnswer}=require('../src/model')
 const {createServer}=require('../src/server')
+const {prepareMaterials}=require('../src/materials')
 const fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path')
 const {importMaterials}=require('../src/knowledge')
 const config={mode:'api',model:'test',apiKey:'test',apiUrl:'https://model.example/v1',timeout:3000}
 const doc=(id,kind='image')=>({id,kind,title:kind==='video'?'新生儿拍嗝演示.mp4':'拍嗝姿势.jpg',version:'version',text:'',chunks:[]})
 const output=(mediaDocumentIds,usedIds=[])=>JSON.stringify({answer:'相关演示可在下方查看。',usedIds,mediaDocumentIds})
+
+test('media citation IDs are assigned before generation and stay stable regardless of selection order',()=>{
+ const text={...doc('text','text'),text:'文本依据',chunks:[{id:'text-chunk',text:'文本依据',lineStart:1,lineEnd:1}]}
+ const prepared=prepareMaterials(withMediaNames({documents:[text,doc('image'),doc('video','video')]}),'给我演示视频')
+ const {evidence,materialTools}=prepared
+ const video=materialTools.catalog.materials.find(d=>d.documentId==='video')
+ assert.equal(video.evidenceId,'3')
+ const result=readAnswer(JSON.stringify({answer:'演示视频见下方[3]',usedIds:[],mediaDocumentIds:['video','image']}),evidence,materialTools)
+ assert.deepEqual(result.usedIds,['3','2']);assert.equal(evidence.length,3)
+ assert.equal(evidence.find(e=>e.id==='3').documentId,'video')
+ assert.equal(prepared.stats.passages,1);assert.equal(prepared.stats.omittedPassages,0)
+ const only=readAnswer(JSON.stringify({answer:'演示见下方',usedIds:['video'],mediaDocumentIds:[]}),evidence,materialTools)
+ assert.deepEqual(only.usedIds,['3'])
+ assert.throws(()=>readAnswer(JSON.stringify({answer:'不存在的来源[99]',usedIds:['video'],mediaDocumentIds:['video']}),evidence,materialTools),/引用/)
+})
+
+test('metadata-only media is explicitly labelled in the model prompt and accepts valid inline references',async()=>{
+ const prepared=prepareMaterials(withMediaNames({documents:[doc('video','video')]}),'给我演示视频')
+ let calls=0
+ const result=await generateAnswer('给我演示视频',prepared.evidence,config,async(url,options)=>{
+  calls++;const prompt=JSON.parse(JSON.parse(options.body).messages.at(-1).content)
+  assert.equal(prompt.evidence[0].metadataOnly,true);assert.equal(prompt.evidence[0].kind,'video')
+  assert.equal(prompt.evidence[0].text,'新生儿拍嗝演示.mp4')
+  assert.equal(prompt.materials.materials[0].evidenceId,prompt.evidence[0].id)
+  return {ok:true,json:async()=>({choices:[{message:{content:JSON.stringify({answer:'演示视频[1]',usedIds:['video'],mediaDocumentIds:[]})}}]})}
+ },{materialTools:prepared.materialTools})
+ assert.equal(calls,1);assert.deepEqual(result.usedIds,['1'])
+})
 
 test('model can attach relevant images and videos directly from catalog without another request',async()=>{
  const evidence=[],tools=createMaterialTools(withMediaNames({documents:[doc('image'),doc('video','video')]}),evidence)
@@ -56,8 +85,9 @@ test('mixed attachments preserve valid sources, remove duplicates and cap at six
 
 test('invalid attachments never relax answer citation validation',()=>{
  const evidence=[{id:'1',kind:'text',quote:'原文'}]
- for(const answer of ['编造引用[9]','未声明的引用[1]'])assert.throws(()=>readAnswer(JSON.stringify({answer,usedIds:[],mediaDocumentIds:['missing']}),evidence),/引用/)
- assert.throws(()=>readAnswer(JSON.stringify({answer:'答案',usedIds:['9'],mediaDocumentIds:null}),evidence),/引用/)
+ assert.throws(()=>readAnswer(JSON.stringify({answer:'编造引用[9]',usedIds:[],mediaDocumentIds:['missing']}),evidence),/引用/)
+ assert.deepEqual(readAnswer(JSON.stringify({answer:'有效引用[1]',usedIds:[],mediaDocumentIds:['missing']}),evidence).usedIds,['1'])
+ assert.deepEqual(readAnswer(JSON.stringify({answer:'答案',usedIds:['9'],mediaDocumentIds:null}),evidence).usedIds,[])
 })
 
 test('attachment diagnostics identify the request without logging model content or filenames',t=>{
@@ -92,7 +122,9 @@ test('chat API returns directly selected media as complete displayable citations
  await importMaterials(c)
  const server=createServer(c,{generateAnswer:(q,e,c,unused,context)=>generateAnswer(q,e,c,async(url,options)=>{
   const catalog=JSON.parse(JSON.parse(options.body).messages.at(-1).content).materials.materials
-  return {ok:true,json:async()=>({choices:[{message:{content:output(['missing',...catalog.map(d=>d.documentId)])}}]})}
+  const video=catalog.find(d=>d.kind==='video')
+  const content=JSON.stringify({answer:'相关演示可在下方查看。['+video.evidenceId+']',usedIds:[video.documentId,'obsolete-id'],mediaDocumentIds:['missing',...catalog.map(d=>d.documentId)]})
+  return {ok:true,json:async()=>({choices:[{message:{content}}]})}
  },context)})
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve))
  t.after(()=>new Promise(resolve=>{server.close(resolve);server.closeAllConnections()}))

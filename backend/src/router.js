@@ -8,6 +8,6 @@ function localReply(question,random=Math.random,modelName=''){
  else if(q==='再见')intent='goodbye'
  if(!intent)return null
  const pool=replies[intent]
- return {answer:intent==='identity'?(modelName||'尚未配置 MODEL_NAME。'):pool[Math.min(pool.length-1,Math.floor(random()*pool.length))],intent,mode:'local',modelInvoked:false,citations:[],retrievedCount:0,contextChars:0}
+ return {answer:intent==='identity'?(modelName?'你好！我是'+modelName+'，想问些什么？':'尚未配置 MODEL_NAME。'):pool[Math.min(pool.length-1,Math.floor(random()*pool.length))],intent,mode:'local',modelInvoked:false,citations:[],retrievedCount:0,contextChars:0}
 }
 module.exports={localReply}

@@ -31,15 +31,15 @@ test('submit returns before model finishes; another replica polls result and pre
  assert.equal((await second(route,undefined,'bob')).status,404)
  finish({answer:'模型生成结果',usedIds:[],mode:'api',modelInvoked:true})
  let result
- for(let i=0;i<30;i++){result=await (await second(route)).json();if(result.status==='completed')break;await tick()}
+ for(let i=0;i<100;i++){result=await (await second(route)).json();if(result.status==='completed')break;await new Promise(resolve=>setTimeout(resolve,10))}
  assert.equal(result.status,'completed');assert.equal(result.result.answer,'模型生成结果');assert.equal(called,1)
- assert.equal(result.result.runtimeVersion,'2026-10-20-chat-v4')
+ assert.equal(result.result.runtimeVersion,'2026-10-20-chat-v5')
 })
 test('preset completes immediately and worker failures reach client without generic connection error',async t=>{
  const {serve}=await setup(t,async()=>{throw Object.assign(new Error('模型服务返回错误（HTTP 401）'),{status:502})})
  const request=await serve()
  const preset=await (await request('/chat/jobs',{question:'你是什么模型'})).json()
- assert.equal(preset.status,'completed');assert.equal(preset.result.answer,'test')
+ assert.equal(preset.status,'completed');assert.equal(preset.result.answer,'你好！我是test，想问些什么？')
  const job=await (await request('/chat/jobs',{question:'请回答'})).json()
  let result
  for(let i=0;i<30;i++){result=await (await request('/chat/jobs/'+job.jobId)).json();if(result.status==='failed')break;await tick()}

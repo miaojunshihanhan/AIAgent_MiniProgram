@@ -81,6 +81,8 @@ test('chat shows inline media, downloads images and does not persist expiring as
   assert.equal(app.data.messages[1].citations[1].assetError,'')
   const xml=fs.readFileSync(path.join(root,'pages/index/index.wxml'),'utf8')
   assert.match(xml,/source.pageText \|\| source.quote/);assert.match(xml,/<video[^>]*source.assetUrl/)
+  assert.match(xml,/<text wx:if="{{!source.metadataOnly}}" class="source-quote"/)
+  assert.match(xml,/<view wx:if="{{!source.metadataOnly}}" class="source-location"/)
   const json=JSON.parse(fs.readFileSync(path.join(root,'pages/index/index.json'),'utf8'))
   assert.equal(json.renderer,'webview')
 })

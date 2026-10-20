@@ -11,7 +11,7 @@ const {compactEvidence}=require('./search')
 const {normalizeHistory,withMediaNames,createMaterialTools}=require('./context')
 const {createJobStore,ownerId}=require('./jobs')
 const loadIndex=async config=>withMediaNames(await loadStoredIndex(config))
-const runtimeVersion='2026-10-20-chat-v4'
+const runtimeVersion='2026-10-20-chat-v5'
 function fail(status, message) { return Object.assign(new Error(message), { status }) }
 function send(res, status, body) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' })

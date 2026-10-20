@@ -28,8 +28,20 @@ function withMediaNames(index){
 }
 function createMaterialTools(index,evidence){
  const documents=index.documents
- const catalog=(offset=0)=>({materials:documents.slice(offset,offset+40).map(d=>({documentId:d.id,title:d.title,path:d.relativePath,kind:d.kind,chunkCount:d.chunks.length,summary:d.text.slice(0,160)})),nextOffset:offset+40<documents.length?offset+40:null,total:documents.length})
- return {catalog:catalog(),definitions:[
+ const seen=new Set()
+ const catalog=(offset=0)=>({materials:documents.slice(offset,offset+40).map(d=>{seen.add(d.id);return {documentId:d.id,title:d.title,path:d.relativePath,kind:d.kind,chunkCount:d.chunks.length,summary:d.chunks.every(c=>c.metadataOnly)?'':d.text.slice(0,160)}}),nextOffset:offset+40<documents.length?offset+40:null,total:documents.length})
+ return {catalog:catalog(),selectMedia(ids){
+  if(!Array.isArray(ids)||ids.length>6)throw new Error('媒体附件最多选择 6 项')
+  const selected=[...new Set(ids)].map(id=>documents.find(d=>d.id===id&&seen.has(id)&&['image','video'].includes(d.kind)))
+  if(selected.some(d=>!d||!d.chunks.length))throw new Error('媒体附件必须来自本轮已浏览目录')
+  // Attachments need not be read in a separate model round or consume the text-reading budget.
+  return selected.map(doc=>{
+   const chunk=doc.chunks[0]
+   let source=evidence.find(e=>e.documentId===doc.id&&e.chunkId===chunk.id)
+   if(!source){source=compactEvidence([{doc,chunk}])[0];source.id=String(evidence.length+1);evidence.push(source)}
+   return source.id
+  })
+ },definitions:[
   {type:'function',function:{name:'list_materials',description:'浏览全部材料名称和摘要，按语义选择相关材料；nextOffset 不为空时可继续翻页。',parameters:{type:'object',properties:{offset:{type:'integer',minimum:0}},additionalProperties:false}}},
   {type:'function',function:{name:'read_material',description:'按材料 ID 读取原文分块或媒体名称；可重复读取不同分块来支持追问和比较。',parameters:{type:'object',properties:{documentId:{type:'string'},offset:{type:'integer',minimum:0}},required:['documentId'],additionalProperties:false}}}
  ],invoke(name,args){
@@ -48,7 +60,7 @@ function createMaterialTools(index,evidence){
     source=compactEvidence([{doc,chunk}],1100)[0]
     source.id=String(evidence.length+1);source.quote=chunk.text;evidence.push(source)
    }
-   sources.push(source)
+   sources.push(source.metadataOnly?{...source,quote:doc.title,location:'',contentAvailable:false}:source)
   }
   return {sources,nextOffset:offset+3<doc.chunks.length?offset+3:null}
  }}

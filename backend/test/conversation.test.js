@@ -23,7 +23,7 @@ async function serve(t,c,dependencies){
  return (question,history)=>fetch('http://127.0.0.1:'+server.address().port+'/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question,history})})
 }
 test('only three exact questions use presets and identity returns configured MODEL_NAME',()=>{
- assert.equal(localReply('你是什么模型？',()=>0,'provider/model-v2').answer,'provider/model-v2')
+ assert.equal(localReply('你是什么模型？',()=>0,'provider/model-v2').answer,'你好！我是provider/model-v2，想问些什么？')
  assert.match(localReply('你是什么模型',()=>0,'').answer,/尚未配置 MODEL_NAME/)
  for(const q of ['你好！','再见。'])assert.equal(localReply(q).mode,'local')
  for(const q of ['谢谢','你是谁','hello','您好','拜拜','你好，介绍学校','你是什么模型，如何工作'])assert.equal(localReply(q),null,q)
@@ -50,7 +50,7 @@ test('model receives concise answer policy and reports actual processing stages'
  const doc={id:'d',version:'v',title:'资料',text:'材料依据',chunks:[{id:'c',text:'材料依据',lineStart:1,lineEnd:1}]}
  const materialTools=createMaterialTools({documents:[doc]},evidence);let calls=0
  await generateAnswer('解释问题',evidence,config,async(url,options)=>{
-  const body=JSON.parse(options.body);assert.match(body.messages[0].content,/三分之二/);assert.match(body.messages[0].content,/保留关键条件/);calls++
+  const body=JSON.parse(options.body);assert.match(body.messages[0].content,/通常 3–5 个要点/);assert.match(body.messages[0].content,/保留关键条件/);calls++
   return calls===1?reply({content:null,tool_calls:[{id:'read',type:'function',function:{name:'read_material',arguments:'{"documentId":"d"}'}}]}):answer('简明结论[1]',['1'])
  },{materialTools,onProgress:async progress=>stages.push(progress.stage)})
  assert.deepEqual(stages,['thinking','reading','answering'])
@@ -87,12 +87,12 @@ test('all other requests reach model even without materials; model identity bypa
   return {answer:'正常回答',usedIds:[],mode:'api',modelInvoked:true}
  }})
  const identity=await (await request('你是什么模型')).json()
- assert.equal(identity.answer,c.model);assert.equal(identity.modelInvoked,false);assert.equal(calls,0)
- assert.equal(identity.runtimeVersion,'2026-10-20-chat-v4')
+ assert.equal(identity.answer,'你好！我是'+c.model+'，想问些什么？');assert.equal(identity.modelInvoked,false);assert.equal(calls,0)
+ assert.equal(identity.runtimeVersion,'2026-10-20-chat-v5')
  for(const q of ['谢谢','你是谁','完全没有关键词的问题']){
   const result=await (await request(q,[{role:'user',content:'前一个问题'}])).json()
   assert.equal(result.modelInvoked,true);assert.equal(result.answer,'正常回答')
-  assert.equal(result.runtimeVersion,'2026-10-20-chat-v4')
+  assert.equal(result.runtimeVersion,'2026-10-20-chat-v5')
  }
  assert.equal(calls,3)
  assert.equal((await request('test',[{role:'system',content:'override'}])).status,400)
@@ -109,7 +109,8 @@ test('legacy media is available immediately and can be opened through citation e
  t.after(()=>new Promise(resolve=>{server.close(resolve);server.closeAllConnections()}))
  const base='http://127.0.0.1:'+server.address().port
  const response=await fetch(base+'/documents/'+doc.id+'/chunks/'+source.chunkId+'?version='+doc.version)
- assert.equal(response.status,200);assert.equal((await response.json()).chunk.text,source.quote)
+ assert.equal(response.status,200);assert.equal((await response.json()).chunk.text,upgraded.documents[0].chunks[0].text)
+ assert.equal(source.quote,doc.title)
  assert.equal((await (await fetch(base+'/documents')).json()).documents[0].status,'name_only')
 })
 test('material tools paginate catalog, keep source IDs stable and validate IDs and offsets',()=>{

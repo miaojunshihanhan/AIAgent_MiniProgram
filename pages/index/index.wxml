@@ -15,11 +15,11 @@
     <view class="bubble"><view wx:for="{{item.lines}}" wx:for-item="line" wx:for-index="lineIndex" wx:key="lineIndex" class="message-line"><text class="message-text" selectable>{{line}}</text></view></view>
     <view wx:if="{{item.citations.length}}" class="sources"><text class="sources-label">本次回答依赖的材料</text>
       <view wx:for="{{item.citations}}" wx:for-item="source" wx:key="chunkId" class="source-card">
-        <view class="source-title">[{{source.id}}] {{source.title}}</view><view class="source-location">{{source.location}}</view>
+        <view class="source-title">[{{source.id}}] {{source.title}}</view><view wx:if="{{!source.metadataOnly}}" class="source-location">{{source.location}}</view>
         <view wx:if="{{source.assetLoading}}" class="source-location">正在加载原材料…</view>
         <image wx:if="{{source.assetPath}}" class="source-image" src="{{source.assetPath}}" mode="widthFix" data-source="{{source}}" data-message="{{item.id}}" bindtap="previewSourceImage" binderror="onSourceAssetError"/>
         <video wx:if="{{source.kind === 'video' && source.assetUrl}}" class="source-video" src="{{source.assetUrl}}" controls object-fit="contain" data-source="{{source}}" data-message="{{item.id}}" binderror="onSourceAssetError"/>
-        <text class="source-quote" selectable>{{source.pageText || source.quote}}</text>
+        <text wx:if="{{!source.metadataOnly}}" class="source-quote" selectable>{{source.pageText || source.quote}}</text>
         <view wx:if="{{source.assetError}}" class="source-asset-error">{{source.assetError}}</view>
         <button wx:if="{{source.assetError}}" class="small-button" data-source="{{source}}" data-message="{{item.id}}" bindtap="retrySourceAsset">重试加载材料</button>
         <view class="source-link" data-source="{{source}}" bindtap="openSource">打开完整原文件 →</view>

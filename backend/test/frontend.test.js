@@ -102,3 +102,77 @@ test('cached chat receives the same paragraph rendering after reload', async () 
   app.onLoad(); await tick()
   assert.deepEqual(Array.from(app.data.messages[0].lines), ['甲', '乙'])
 })
+
+test('image preview downloads and decodes a local file before display and zoom', async () => {
+  let download, preview
+  const app = page('pages/source/source.js', {
+    document: async () => ({document:{id:'doc',version:'v',kind:'image',format:'jpg'},lines:[],nextOffset:null}),
+    originalUrl: () => 'http://backend/doc/original?version=v'
+  }, {downloadFile: options => {download=options;return {abort(){}}},
+    getImageInfo: options => { assert.equal(options.src,'wxfile://image.jpg'); options.success({width:1200,height:800}) },
+    previewImage: options => {preview=options}})
+  app.onLoad({id:'doc',version:'v'});await tick()
+  assert.equal(app.data.imageLoading,true);assert.equal(app.data.imagePath,'')
+  download.success({statusCode:200,tempFilePath:'wxfile://image.jpg'})
+  assert.equal(app.data.imagePath,'wxfile://image.jpg');assert.equal(app.data.imageHeight,460)
+  app.previewImage();assert.equal(preview.current,'wxfile://image.jpg')
+})
+test('image failures are visible and retry can recover without a blank preview', () => {
+  let download
+  const app = page('pages/source/source.js', {}, {downloadFile: options => {download=options;return {abort(){}}}, getImageInfo: options => options.success({width:100,height:200})})
+  app.setData({originalUrl:'http://backend/image'})
+  app.retryImage();download.fail({errMsg:'downloadFile:fail domain blocked'})
+  assert.match(app.data.imageError,/domain blocked/);assert.equal(app.data.imageLoading,false)
+  app.retryImage();download.success({statusCode:404})
+  assert.match(app.data.imageError,/HTTP 404/)
+  app.retryImage();download.success({statusCode:200,tempFilePath:'wxfile://retry.jpg'})
+  assert.equal(app.data.imageError,'');assert.equal(app.data.imagePath,'wxfile://retry.jpg')
+})
+test('PPT uses local page images and keeps extracted text when decoding fails', async () => {
+  let download, decode
+  const app = page('pages/source/source.js', {
+    page: async (id,v,n) => ({page:{number:n,text:'本页依据',hasImage:true},pageCount:3}),pageImageUrl:(id,v,n)=>'http://backend/'+n+'.png'
+  }, {downloadFile: options=>{download=options;return {abort(){}}},getImageInfo: options=>{decode=options}})
+  app.documentId='doc';app.version='v';app.loadSlide(2);await tick()
+  download.success({statusCode:200,tempFilePath:'wxfile://slide.png'});decode.fail({errMsg:'invalid image'})
+  assert.equal(app.data.slide.text,'本页依据');assert.match(app.data.slideImageError,/invalid image/)
+  app.retrySlideImage();download.success({statusCode:200,tempFilePath:'wxfile://slide.png'});decode.success({width:1600,height:900})
+  assert.equal(app.data.slideImage,'wxfile://slide.png');assert.equal(app.data.slideImageHeight,360)
+})
+test('late image decoding and page responses cannot overwrite the current PPT page', async () => {
+  const pending=[], downloads=[], decodes=[]
+  const app=page('pages/source/source.js', {page:(id,v,n)=>new Promise(resolve=>pending.push({n,resolve})),pageImageUrl:(id,v,n)=>'http://backend/'+n},
+    {downloadFile:o=>{downloads.push(o);return {abort(){}}},getImageInfo:o=>decodes.push(o)})
+  app.loadSlide(1);pending[0].resolve({page:{number:1,hasImage:true},pageCount:3});await tick()
+  downloads[0].success({statusCode:200,tempFilePath:'wxfile://old'});
+  app.loadSlide(2);app.loadSlide(3)
+  pending[2].resolve({page:{number:3,hasImage:true},pageCount:3});await tick()
+  pending[1].resolve({page:{number:2,hasImage:true},pageCount:3});await tick()
+  decodes[0].success({width:100,height:100});assert.equal(app.data.slideImage,'');assert.equal(app.data.slide.number,3)
+  downloads[1].success({statusCode:200,tempFilePath:'wxfile://current'});decodes[1].success({width:100,height:100})
+  assert.equal(app.data.slideImage,'wxfile://current')
+  app.onUnload();downloads[1].fail({errMsg:'abort'});assert.equal(app.data.slideImageError,'')
+})
+
+test('PPT viewport stays fixed through metadata, download, decoding, failure and retry', async () => {
+  let resolvePage, download, decode
+  const app = page('pages/source/source.js', {page: () => new Promise(resolve => {resolvePage=resolve}),pageImageUrl: () => 'http://backend/slide'},
+    {downloadFile: o => {download=o;return {abort(){}}},getImageInfo: o => {decode=o}})
+  const height=app.data.slideImageHeight
+  for (const size of [{width:1600,height:900},{width:600,height:1800}]) {
+    app.loadSlide(1);assert.equal(app.data.slideImageHeight,height)
+    resolvePage({page:{number:1,text:'依据',hasImage:true},pageCount:2});await tick()
+    assert.equal(app.data.slideImageLoading,true);assert.equal(app.data.slideImageHeight,height)
+    download.success({statusCode:200,tempFilePath:'wxfile://slide'})
+    decode.success(size);assert.equal(app.data.slideImageHeight,height)
+  }
+  app.retrySlideImage();decode.fail({errMsg:'cache expired'})
+  assert.equal(app.data.slideImageHeight,height);assert.ok(app.data.slideImageError)
+  app.retrySlideImage();download.success({statusCode:200,tempFilePath:'wxfile://retry'});decode.success({width:800,height:600})
+  assert.equal(app.data.slideImageHeight,height)
+  const xml=fs.readFileSync(path.join(root,'pages/source/source.wxml'),'utf8')
+  const css=fs.readFileSync(path.join(root,'pages/source/source.wxss'),'utf8')
+  assert.match(xml, /class="slide-stage"/)
+  assert.match(xml, /class="slide-stage-loading"/)
+  assert.match(css, /\.slide-stage\{[^}]*height:360rpx/)
+})

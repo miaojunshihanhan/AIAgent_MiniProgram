@@ -1,14 +1,28 @@
 <navigation-bar title="原材料" back color="#17233d" background="#f4f7fc"></navigation-bar>
-<scroll-view class="page-scroll" scroll-y type="list"><view class="page-body">
+<scroll-view class="page-scroll" scroll-y><view class="page-body">
   <view wx:if="{{document}}" class="source-heading"><view class="page-title">{{document.title}}</view><view class="page-description">材料版本 {{shortVersion}} · {{document.lineCount}} 行</view></view>
   <view wx:if="{{error}}" class="error-box">{{error}}</view>
   <view wx:if="{{document.warning}}" class="notice">{{document.warning}}</view>
-  <image wx:if="{{document.kind === 'image'}}" src="{{originalUrl}}" mode="widthFix" style="width:100%" bindtap="previewImage"/>
+  <view wx:if="{{document.kind === 'image'}}" class="image-preview"><view wx:if="{{imageLoading}}" class="notice">正在下载并加载图片…</view><image wx:if="{{imagePath}}" class="material-image" src="{{imagePath}}" mode="aspectFit" style="height:{{imageHeight}}rpx" data-kind="original" binderror="onPreviewError" bindtap="previewImage"/><view wx:if="{{imageError}}" class="error-box">{{imageError}}</view><button wx:if="{{imageError}}" class="secondary-button" bindtap="retryImage">重试图片预览</button></view>
   <video wx:if="{{document.kind === 'video' && originalUrl}}" id="material-video" src="{{originalUrl}}" controls object-fit="contain" binderror="onVideoError" bindloadedmetadata="onVideoReady" style="width:100%;height:420rpx"/>
   <view wx:if="{{videoError}}" class="error-box">{{videoError}}</view>
   <button wx:if="{{document.kind === 'video'}}" class="secondary-button" bindtap="downloadVideo" loading="{{downloading}}" disabled="{{downloading}}">{{downloading ? '正在下载 ' + videoProgress + '%' : '下载到本机后播放'}}</button>
   <button wx:if="{{document.kind === 'document'}}" class="secondary-button" bindtap="openOriginal" loading="{{opening}}" disabled="{{opening}}">下载并打开原文件</button>
-  <view wx:if="{{slide}}" class="panel"><view class="section-title">幻灯片 {{slide.number}} / {{slideCount}}</view><image wx:if="{{slideImage}}" src="{{slideImage}}" mode="widthFix" style="width:100%"/><text wx:else class="original-text" selectable>{{slide.text}}</text><button bindtap="previousSlide" disabled="{{slide.number <= 1}}">上一页</button><button bindtap="nextSlide" disabled="{{slide.number >= slideCount}}">下一页</button><view wx:if="{{!slideImage}}" class="notice">当前为页文字，原版页图尚未生成。</view></view>
+  <view wx:if="{{slide || slideLoading}}" class="panel slide-panel">
+    <view class="section-title">{{slide ? '幻灯片 ' + slide.number + ' / ' + slideCount : '正在打开幻灯片'}}</view>
+    <view class="slide-stage">
+      <image wx:if="{{slideImage}}" class="material-image slide-stage-image" src="{{slideImage}}" mode="aspectFit" data-kind="slide" binderror="onPreviewError" bindtap="previewSlideImage"/>
+      <view wx:if="{{slideLoading || slideImageLoading}}" class="slide-stage-loading">正在加载幻灯片…</view>
+      <scroll-view wx:if="{{!slideImage && !slideLoading && !slideImageLoading}}" class="slide-stage-fallback" scroll-y>
+        <view wx:if="{{slideImageError}}" class="error-box">{{slideImageError}}</view>
+        <button wx:if="{{slideImageError}}" class="secondary-button" bindtap="retrySlideImage">重试页图预览</button>
+        <text class="original-text" selectable>{{slide.text}}</text>
+        <view wx:if="{{!slide.hasImage}}" class="notice">当前为页文字，原版页图尚未生成。</view>
+      </scroll-view>
+    </view>
+    <button bindtap="previousSlide" disabled="{{slideLoading || !slide || slide.number <= 1}}">上一页</button>
+    <button bindtap="nextSlide" disabled="{{slideLoading || !slide || slide.number >= slideCount}}">下一页</button>
+  </view>
   <view wx:if="{{chunk}}" class="panel evidence-panel"><view class="section-title">回答引用的原文</view><view class="location">{{chunk.location}} · 提取文本第 {{chunk.lineStart}}–{{chunk.lineEnd}} 行</view><text class="original-text" selectable>{{chunk.text}}</text></view>
   <button wx:if="{{!fullLoaded && document.chunkCount}}" class="primary-button" bindtap="loadFull" loading="{{loading}}" disabled="{{loading}}">查看完整原文</button>
   <view wx:if="{{fullLoaded}}" class="panel full-text"><view class="section-title">提取文本（版式请查看原文件）</view><view wx:for="{{lines}}" wx:key="number" class="text-line {{chunk && item.number >= chunk.lineStart && item.number <= chunk.lineEnd ? 'highlight' : ''}}"><text class="line-number">{{item.number}}</text><text class="line-content" selectable>{{item.text}}</text></view></view>

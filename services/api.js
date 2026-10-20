@@ -17,7 +17,7 @@ function request(path, options) {
 module.exports = {
   originalUrl: (id, version) => config.baseUrl.replace(/\/$/, '') + '/documents/' + encodeURIComponent(id) + '/original?version=' + encodeURIComponent(version),
   page: (id,v,n) => request('/documents/'+id+'/pages/'+n+'?version='+v),
-  pageImageUrl: (id,v,n) => config.baseUrl+'/documents/'+id+'/pages/'+n+'/image?version='+v,
+  pageImageUrl: (id,v,n) => config.baseUrl.replace(/\/$/, '')+'/documents/'+encodeURIComponent(id)+'/pages/'+n+'/image?version='+encodeURIComponent(v),
   health: () => request('/health'),
   chat: question => request('/chat', { method: 'POST', data: { question } }),
   documents: () => request('/documents'),

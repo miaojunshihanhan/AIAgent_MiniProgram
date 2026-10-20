@@ -32,9 +32,10 @@ test('XLSX reads shared/inline strings and sheet plus row locations',async t=>{
  await fs.writeFile(f,zip({'xl/workbook.xml':'<workbook xmlns:r="r"><sheets><sheet name="学习计划" r:id="rId1"/></sheets></workbook>','xl/_rels/workbook.xml.rels':'<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>','xl/sharedStrings.xml':'<sst><si><t>项目</t></si></sst>','xl/worksheets/sheet1.xml':'<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c></row><row r="2"><c r="A2" t="inlineStr"><is><t>岗前培训</t></is></c><c r="B2"><v>3</v></c></row></sheetData></worksheet>'}))
  const parsed=await parseMaterial(f,'.xlsx');assert.equal(parsed.sections.length,2);assert.match(parsed.sections[1].location,/学习计划.*2/);assert.match(parsed.sections[1].text,/项目/);assert.match(parsed.sections[1].text,/岗前培训/)
 })
-test('media without transcript is not searchable; sidecar edits update version',async t=>{
+test('media without transcript is searchable by name; sidecar edits update version',async t=>{
  const c=await setup(t),f=path.join(c.materialsRoot,'1..mp4');await fs.writeFile(f,'0123456789')
- let report=await importMaterials(c);assert.equal(report.pendingTextCount,1);assert.equal(report.searchableCount,0)
+ let report=await importMaterials(c);assert.equal(report.pendingTextCount,0);assert.equal(report.searchableCount,1)
+ const named=(await loadIndex(c)).documents[0];assert.equal(named.status,'name_only');assert.match(named.chunks[0].text,/1\.\.mp4/);assert.equal(named.chunks[0].metadataOnly,true)
  await fs.writeFile(f+'.txt','操作演示文字说明')
  report=await importMaterials(c);assert.equal(report.documentCount,1);assert.equal(report.searchableCount,1)
  const before=(await loadIndex(c)).documents[0];assert.match(before.chunks[0].location,/配套说明/)

@@ -26,7 +26,7 @@ test('empty knowledge does not fabricate evidence', async t => {
   const config = await fixture(t), request = await serve(t, config)
   const result = await (await request('/chat', post('质保期限'))).json()
   assert.equal(result.citations.length, 0)
-  assert.match(result.answer, /未检索到/)
+  assert.match(result.answer, /本地摘录模式.*尚未调用模型/)
 })
 test('import, Chinese retrieval, citations, original text and bytes remain consistent', async t => {
   const config = await fixture(t)

@@ -4,10 +4,14 @@ const fs = require('node:fs/promises')
 const path = require('node:path')
 const { randomUUID } = require('node:crypto')
 const { config: defaults } = require('./config')
-const { loadIndex, retrieve } = require('./knowledge')
+const { loadIndex: loadStoredIndex, retrieve } = require('./knowledge')
 const { generateAnswer } = require('./model')
 const {localReply}=require('./router')
 const {compactEvidence}=require('./search')
+const {normalizeHistory,withMediaNames,createMaterialTools}=require('./context')
+const {createJobStore,ownerId}=require('./jobs')
+const loadIndex=async config=>withMediaNames(await loadStoredIndex(config))
+const runtimeVersion='2026-10-20-chat-v3'
 function fail(status, message) { return Object.assign(new Error(message), { status }) }
 function send(res, status, body) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' })
@@ -17,7 +21,7 @@ async function readJson(req) {
   let size = 0; const parts = []
   for await (const part of req) {
     size += part.length
-    if (size > 20000) throw fail(413, '请求内容过大。')
+    if (size > 100000) throw fail(413, '请求内容过大。')
     parts.push(part)
   }
   try { return JSON.parse(Buffer.concat(parts).toString('utf8')) }
@@ -29,6 +33,23 @@ function publicDocument(doc) {
 }
 function createServer(config = defaults, dependencies = {}) {
   const model = dependencies.generateAnswer || generateAnswer
+  const jobs=createJobStore(config,dependencies)
+  async function answer(question,history,requestId){
+    const started=Date.now()
+    console.log('[chat] started','requestId='+requestId)
+    const local=localReply(question,Math.random,config.model)
+    if(local)return {requestId,runtimeVersion,...local}
+    const index=await loadIndex(config)
+    const evidence=config.mode==='mock'?compactEvidence(retrieve(index,question,3),1800):[]
+    const materialTools=index.documents.length?createMaterialTools(index,evidence):undefined
+    const output=await model(question,evidence,config,undefined,{history,materialTools,requestId})
+    console.log('[chat] completed','requestId='+requestId,'elapsedMs='+(Date.now()-started))
+    return {requestId,runtimeVersion,answer:output.answer,mode:output.mode,modelInvoked:output.modelInvoked===true,
+      citations:evidence.filter(e=>output.usedIds.includes(e.id)).map(e=>{
+        const doc=index.documents.find(d=>d.id===e.documentId),chunk=doc.chunks.find(c=>c.id===e.chunkId)
+        return {...e,quote:chunk.text,pageText:(doc.pages||[]).find(p=>p.number===e.pageNumber)?.text||''}
+      }),retrievedCount:evidence.length,contextChars:evidence.reduce((n,e)=>n+e.quote.length,0)}
+  }
   let active = 0
   const server = http.createServer(async (req, res) => {
     try {
@@ -41,7 +62,7 @@ function createServer(config = defaults, dependencies = {}) {
       }
       if (req.method === 'GET' && url.pathname === '/health') {
         const index = await loadIndex(config)
-        return send(res, 200, { ok: true, modelMode: config.mode, modelConfigured: !!(config.apiKey && config.model && config.apiUrl && !config.apiUrl.includes('YOUR-PROVIDER')),
+        return send(res, 200, { ok: true, runtimeVersion, capabilities:{conversation:true,materialTools:true,mediaNames:true,asyncChat:true}, modelMode: config.mode, modelConfigured: !!(config.apiKey && config.model && config.apiUrl && !config.apiUrl.includes('YOUR-PROVIDER')),
           documentCount: index.documents.length, searchableCount: index.documents.filter(d => d.chunks.length).length, pendingTextCount: index.documents.filter(d => !d.chunks.length).length, importedAt: index.importedAt, developmentOnly: config.deployment !== 'cloud', storage: config.storage || 'local' })
       }
       const asset = url.pathname.match(/^\/documents\/([a-f0-9]{24})\/(?:original|pages\/(\d+)\/image)$/)
@@ -98,21 +119,31 @@ function createServer(config = defaults, dependencies = {}) {
         return send(res, 200, { document: publicDocument(doc), lines: lines.slice(offset, end).map((text, i) => ({ number: offset + i + 1, text })),
           offset, nextOffset: end < lines.length ? end : null, totalLines: lines.length })
       }
-      if (req.method === 'POST' && url.pathname === '/chat') {
+      const jobMatch=url.pathname.match(/^\/chat\/jobs\/([a-f0-9-]{36})$/)
+      if(req.method==='GET'&&jobMatch)return send(res,200,{runtimeVersion,...await jobs.get(jobMatch[1],ownerId(req))})
+      if (req.method === 'POST' && ['/chat','/chat/jobs'].includes(url.pathname)) {
         if (!(req.headers['content-type'] || '').includes('application/json')) throw fail(415, '请使用 application/json。')
         if (active >= 4) throw fail(429, '当前请求较多，请稍后重试。')
         active++
         try {
         const body = await readJson(req)
         if (!body || typeof body.question !== 'string' || !body.question.trim() || body.question.length > 2000) throw fail(400, '问题不能为空，且不超过 2000 个字符。')
-        const question = body.question.trim()
-        const local=localReply(question)
-        if(local)return send(res,200,{requestId:randomUUID(),...local})
-        const index = await loadIndex(config)
-        const evidence=compactEvidence(retrieve(index,question,3),1800)
-          const output = await model(question, evidence, config)
-          return send(res, 200, { requestId: randomUUID(), answer: output.answer, mode: output.mode, modelInvoked: output.modelInvoked === true,
-            citations: evidence.filter(e => output.usedIds.includes(e.id)), retrievedCount: evidence.length, contextChars: evidence.reduce((n,e)=>n+e.quote.length,0) })
+        const question = body.question.trim(),history=normalizeHistory(body.history)
+        if(url.pathname==='/chat/jobs'){
+          const local=localReply(question,Math.random,config.model)
+          if(local)return send(res,200,{status:'completed',result:{requestId:randomUUID(),runtimeVersion,...local}})
+          const job=await jobs.create(ownerId(req))
+          active++
+          setImmediate(async()=>{
+            try{
+              let result,error
+              try{result=await answer(question,history,job.id)}catch(cause){error=cause;console.error('[chat] failed','requestId='+job.id,'elapsedMs='+(Date.now()-job.createdAt),cause.status||500)}
+              await jobs.finish(job,result,error)
+            }catch(error){console.error('[chat] persist failed','requestId='+job.id,error.message)}finally{active--}
+          })
+          return send(res,202,{jobId:job.id,status:'running',runtimeVersion})
+        }
+        return send(res,200,await answer(question,history,randomUUID()))
         } finally { active-- }
       }
       throw fail(404, '接口不存在。')

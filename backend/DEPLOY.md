@@ -89,6 +89,20 @@ knowledge-agent/previews/文档ID/版本/页号.png
 
 ## 3. 在已有 express-ec98 服务创建新版本
 
+每次改后端后，在项目根目录先执行 `powershell -NoProfile -ExecutionPolicy Bypass -File backend/scripts/package-cloud.ps1`，重新生成并校验 `backend/cloudrun-upload.zip`。旧 ZIP 不会随源码修改自动更新。打包只包含运行代码、Dockerfile 和依赖清单，不包含密钥、材料或本地索引。
+
+部署发布并分配流量后，在小程序请求 `/health`，确认 `runtimeVersion` 为 `2026-10-20-chat-v3`，且 `capabilities.materialTools`、`capabilities.conversation` 和 `capabilities.asyncChat` 为 true。没有这些字段说明流量还在旧后端；仅在本机重新编译小程序不会更新云托管。新版小程序会在顶部提示“云端仍为旧版，请部署新版后端”。
+
+### 问答超时修正（chat-v3）
+
+小程序云托管问答使用 `POST /chat/jobs` 创建任务并立即返回 202，再用 `GET /chat/jobs/:jobId` 获取状态和最终结果。每次网络请求设置 12 秒超时；模型生成可继续使用 MODEL_TIMEOUT_MS（默认 45 秒），前端最长等待约 100 秒。不要仅修改前端 timeout 来等待多轮模型调用。旧的同步 `/chat` 保留给本地或兼容客户端，小程序不再调用它。
+
+部署后端和重新编译小程序必须一起完成。后台日志新增 requestId、模型调用轮次、总 elapsedMs，便于区分多次请求；`citations=0` 只表示本轮未引用材料，不代表网络请求失败。
+
+任务状态和回答写到私有 COS 的 `knowledge-agent/chat-jobs/`（使用自定义 COS_PREFIX 时随前缀变化），支持轮询落到其他实例。不会把问题和历史存入任务文件；回答和引用仍属于业务数据。服务现有 COS 凭据需有此子目录的 GetObject / PutObject 权限；不必扩大整个桶权限，也不要改公有读。对象接口有效期 15 分钟，物理文件可配置仅限 chat-jobs/ 前缀的一天生命周期回收。
+
+后台任务在容器进程内执行，不是独立持久队列；建议服务最小实例数设为 1 以保持任务运行（会增加常驻实例费用）。发布或重启期间在途任务可能失败，客户端会显示任务超时或模型错误，而不再统一提示权限异常。
+
 进入微信云托管环境 prod-d9ggn765cba2ad61f，打开已有服务 express-ec98，创建新版本，使用本地代码上传。
 
 - 上传源代码目录：D:\VsCodePrograms\Agent\backend（不要选整个小程序，也不要选下载的 Express 模板）。

@@ -78,10 +78,24 @@ test('upload publishes index after assets and records actual preview availabilit
 test('mini program routes JSON via callContainer and retrieves signed media URLs', async () => {
   const config = { mode: 'container', env: 'test-env', service: 'test-service' }, calls = [], module = { exports: {} }
   const source = await fs.readFile(path.join(__dirname, '../../services/api.js'), 'utf8')
-  vm.runInNewContext(source, { module, require: () => config, wx: { cloud: { callContainer(args) { calls.push(args); args.success({ statusCode: 200, data: args.path.includes('/original') ? { url: 'https://cos.example/signed' } : { answer: 'ok' } }) } } }, encodeURIComponent, Promise, Error })
+  vm.runInNewContext(source, { module, require: () => config, wx: { cloud: { callContainer(args) { calls.push(args); args.success({ statusCode: 200, data: args.path.includes('/original') ? { url: 'https://cos.example/signed' } : { status:'completed',result:{answer:'ok'} } }) } } }, encodeURIComponent, Promise, Error })
   const api = module.exports
   assert.equal((await api.chat('question')).answer, 'ok')
   assert.equal(calls[0].config.env, 'test-env'); assert.equal(calls[0].header['X-WX-SERVICE'], 'test-service')
-  assert.equal(calls[0].path, '/chat'); assert.equal(calls[0].data.question, 'question')
+  assert.equal(calls[0].path, '/chat/jobs'); assert.equal(calls[0].data.question, 'question');assert.equal(calls[0].timeout,12000)
   assert.equal(await api.assetUrl(id, version), 'https://cos.example/signed')
+})
+
+test('cloud jobs persist to COS and can be read from another replica',async t=>{
+  t.after(()=>mock.restoreAll())
+  const {createJobStore}=require('../src/jobs'),objects=new Map()
+  mock.method(COS.prototype,'putObject',(args,cb)=>{assert.match(args.Key,/knowledge-agent\/chat-jobs\/[a-f0-9-]+\.json$/);objects.set(args.Key,args.Body);cb(null,{})})
+  mock.method(COS.prototype,'getObject',(args,cb)=>objects.has(args.Key)?cb(null,{Body:objects.get(args.Key)}):cb({statusCode:404}))
+  const config={...cloudConfig(),timeout:45000},worker=createJobStore(config),replica=createJobStore(config)
+  const job=await worker.create('owner')
+  assert.equal((await replica.get(job.id,'owner')).status,'running')
+  await worker.finish(job,{answer:'已完成',citations:[]})
+  const status=await replica.get(job.id,'owner')
+  assert.equal(status.status,'completed');assert.equal(status.result.answer,'已完成')
+  await assert.rejects(replica.get(job.id,'another-owner'),/不存在/)
 })

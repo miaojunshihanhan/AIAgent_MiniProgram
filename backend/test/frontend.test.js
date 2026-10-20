@@ -28,6 +28,49 @@ test('failed chat restores question and enables retry', async () => {
   const app = page('pages/index/index.js', {chat: async () => {throw new Error('连接失败')}}, {setStorageSync: () => {}})
   app.setData({input:'原始问题'}); app.send(); await tick()
   assert.equal(app.data.sending, false); assert.equal(app.data.input, '原始问题'); assert.equal(app.data.error, '连接失败')
+  assert.equal(app.data.messages.length, 0)
+})
+
+test('follow-up passes bounded history and material names without duplicating current question', async () => {
+  let sent
+  const app = page('pages/index/index.js', {chat: async (question, history) => {sent={question,history};return {answer:'继续回答',citations:[],mode:'api'}}}, {setStorageSync:()=>{}})
+  app.setData({messages:[{id:'q',role:'user',content:'怎么拍嗝？',citations:[]},{id:'a',role:'assistant',content:'请参考演示[1]',citations:[{title:'拍嗝演示.mp4'}]}],input:'还有其他姿势吗？'})
+  app.send();await tick()
+  assert.equal(sent.question,'还有其他姿势吗？');assert.equal(sent.history.length,2)
+  assert.equal(sent.history[0].content,'怎么拍嗝？');assert.match(sent.history[1].content,/拍嗝演示.mp4/)
+  assert.ok(sent.history.every(message=>message.content!==sent.question))
+})
+
+test('chat shows inline media, downloads images and does not persist expiring asset URLs', async () => {
+  let download, saved
+  const sources=[{id:'1',documentId:'image-doc',documentVersion:'v',chunkId:'image',kind:'image',quote:'名称'},
+    {id:'2',documentId:'video-doc',documentVersion:'v',chunkId:'video',kind:'video',quote:'名称'}]
+  const app=page('pages/index/index.js',{chat:async()=>({answer:'请参考[1][2]',citations:sources,mode:'api'}),assetUrl:async id=>'https://cos.example/'+id},
+    {setStorageSync:(key,messages)=>{saved=messages},downloadFile:options=>{download=options},getImageInfo:options=>options.success({width:640,height:480})})
+  app.setData({input:'给我相关材料'});app.send();await tick()
+  assert.equal(download.url,'https://cos.example/image-doc');download.success({statusCode:200,tempFilePath:'wxfile://inline.png'})
+  const message=app.data.messages[1]
+  assert.equal(message.citations[0].assetPath,'wxfile://inline.png');assert.equal(message.citations[1].assetUrl,'https://cos.example/video-doc')
+  app.saveMessages(app.data.messages)
+  assert.equal(saved[1].citations[0].assetPath,undefined);assert.equal(saved[1].citations[1].assetUrl,undefined)
+  app.onSourceAssetError({currentTarget:{dataset:{message:message.id,source:message.citations[1]}}})
+  assert.match(app.data.messages[1].citations[1].assetError,/重试/)
+  app.retrySourceAsset({currentTarget:{dataset:{message:message.id,source:message.citations[1]}}});await tick()
+  assert.equal(app.data.messages[1].citations[1].assetError,'')
+  const xml=fs.readFileSync(path.join(root,'pages/index/index.wxml'),'utf8')
+  assert.match(xml,/source.pageText \|\| source.quote/);assert.match(xml,/<video[^>]*source.assetUrl/)
+  const json=JSON.parse(fs.readFileSync(path.join(root,'pages/index/index.json'),'utf8'))
+  assert.equal(json.renderer,'webview')
+})
+
+test('cached media fetches fresh signed URLs on reload and keeps text if download fails', async()=>{
+  let download
+  const cached=[{id:'old',role:'assistant',content:'演示[1]',citations:[{chunkId:'c',documentId:'d',documentVersion:'v',kind:'image',quote:'完整依据'}]}]
+  const app=page('pages/index/index.js',{health:async()=>({modelMode:'api',documentCount:1}),assetUrl:async()=> 'https://cos.example/fresh'},
+    {getStorageSync:()=>cached,downloadFile:options=>{download=options}})
+  app.onLoad();await tick();assert.equal(download.url,'https://cos.example/fresh')
+  download.fail({errMsg:'offline'})
+  assert.equal(app.data.messages[0].citations[0].quote,'完整依据');assert.match(app.data.messages[0].citations[0].assetError,/下载失败/)
 })
 test('source page binds citation version and paginates original lines', async () => {
   const calls = [], document = {version:'version',title:'手册'}
@@ -101,6 +144,13 @@ test('cached chat receives the same paragraph rendering after reload', async () 
   const app = page('pages/index/index.js', {health: async () => ({modelMode:'mock',documentCount:0})}, {getStorageSync: () => [{id:'old',role:'assistant',content:'甲\n乙'}]})
   app.onLoad(); await tick()
   assert.deepEqual(Array.from(app.data.messages[0].lines), ['甲', '乙'])
+  assert.match(app.data.status,/云端仍为旧版/)
+})
+
+test('health identifies the deployed conversation backend and configured model mode',async()=>{
+  const app=page('pages/index/index.js',{health:async()=>({modelMode:'api',modelConfigured:true,documentCount:3,runtimeVersion:'2026-10-20-chat-v3',capabilities:{conversation:true,materialTools:true,asyncChat:true}})})
+  app.refreshHealth();await tick()
+  assert.equal(app.data.status,'模型 API 模式 · 3 份材料')
 })
 
 test('image preview downloads and decodes a local file before display and zoom', async () => {

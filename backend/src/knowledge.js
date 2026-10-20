@@ -58,27 +58,27 @@ async function importMaterials(config) {
       let sidecarHash=''
       for(const candidate of [filename+'.txt',filename+'.md']){try{const bytes=await fs.readFile(candidate);sidecarHash=hash(bytes);break}catch(e){if(e.code!=='ENOENT')throw e}}
       const previousDoc=byPath.get(relative.replace(/\\/g,'/'))
-      if(previousDoc&&previousDoc.rawHash===rawHash&&previousDoc.sidecarHash===sidecarHash&&previousDoc.parserVersion===3){documents.push(previousDoc);reusedCount++;if(previousDoc.warning)warnings.push({file:relative,reason:previousDoc.warning});continue}
+      if(previousDoc&&previousDoc.rawHash===rawHash&&previousDoc.sidecarHash===sidecarHash&&previousDoc.parserVersion===4){documents.push(previousDoc);reusedCount++;if(previousDoc.warning)warnings.push({file:relative,reason:previousDoc.warning});continue}
       const parsed=await parseMaterial(filename,ext);parsedCount++
       if(['.txt','.md'].includes(ext)&&!parsed.sections.some(section=>section.text.trim()))throw new Error('空文件')
       const chunks=[]; let text='',lineOffset=0
       for(const section of parsed.sections){
         if(!section.text.trim())continue
         const normalized=section.text.replace(/\r\n?/g,'\n')
-        chunks.push(...splitText(normalized).map(c=>({...c,lineStart:c.lineStart+lineOffset,lineEnd:c.lineEnd+lineOffset,location:section.location||'',pageNumber:section.pageNumber||null})))
+        chunks.push(...splitText(normalized).map(c=>({...c,lineStart:c.lineStart+lineOffset,lineEnd:c.lineEnd+lineOffset,location:section.location||'',pageNumber:section.pageNumber||null,metadataOnly:section.metadataOnly===true})))
         text+=(text?'\n':'')+normalized
         lineOffset=text.split('\n').length
       }
       // Sidecar edits also invalidate citations; keep raw bytes intact in snapshot.
-      const version=parsed.sidecar?hash(rawHash+'\n'+text):rawHash
+      const version=parsed.sidecar||['image','video'].includes(parsed.kind)?hash(rawHash+'\n'+text):rawHash
       const id=hash(relative.replace(/\\/g,'/')).slice(0,24),original=id+'-'+version+ext
       const destination=path.join(config.dataRoot,'originals',original)
       try{await fs.access(destination)}catch(_){await fs.copyFile(filename,destination)}
-      const status=chunks.length?'ready':'needs_text'
+      const status=parsed.status||(chunks.length?'ready':'needs_text')
       const warning=parsed.warning||(!chunks.length?'未提取到正文，可能只有图片或扫描内容，需 OCR 或转为可读文本':'')
       if(warning)warnings.push({file:relative,reason:warning})
       documents.push({id,version,title:path.basename(relative),relativePath:relative.replace(/\\/g,'/'),format:ext.slice(1),size:stat.size,original,text,
-        rawHash,sidecarHash,parserVersion:3,pages:parsed.pages||[],kind:parsed.kind,status,warning,sidecar:parsed.sidecar||'',chunks:chunks.map((chunk,index)=>({...chunk,id:id+'-'+version.slice(0,12)+'-'+index}))})
+        rawHash,sidecarHash,parserVersion:4,pages:parsed.pages||[],kind:parsed.kind,status,warning,sidecar:parsed.sidecar||'',chunks:chunks.map((chunk,index)=>({...chunk,id:id+'-'+version.slice(0,12)+'-'+index}))})
     }catch(error){skipped.push({file:relative,reason:error.message})}
   }
   const index={schemaVersion:3,importedAt:new Date().toISOString(),documents}

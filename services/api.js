@@ -3,13 +3,19 @@ function request(path, options) {
   options = options || {}
   return new Promise((resolve, reject) => {
     const args = {
-      method: options.method || 'GET', data: options.data, timeout: config.timeout || 60000,
+      method: options.method || 'GET', data: options.data, timeout: config.mode === 'container' ? 12000 : (config.timeout || 60000),
       header: { 'content-type': 'application/json' },
       success(res) {
         if (res.statusCode >= 200 && res.statusCode < 300) resolve(res.data)
         else reject(new Error((res.data && res.data.error) || ('请求失败：HTTP ' + res.statusCode)))
       },
-      fail(error) { reject(new Error((config.mode === 'container' ? '无法连接云托管，请检查版本发布状态、小程序环境关联与服务访问权限。' : '无法连接本地后端，请检查地址、同一 Wi-Fi 和防火墙。') + (error.errMsg || ''))) }
+      fail(error) {
+        const detail = error.errMsg || ''
+        const message = config.mode === 'container'
+          ? (/102002|timeout|超时/i.test(detail) ? '云托管本次请求失败或超时（102002 不一定是权限错误）。请检查云端请求日志。' : '云托管请求失败，请检查网络、服务状态与小程序环境关联。')
+          : '无法连接本地后端，请检查地址、同一 Wi-Fi 和防火墙。'
+        const failure = new Error(message + detail); failure.transport = true; reject(failure)
+      }
     }
     if (config.mode === 'container') {
       if (!wx.cloud || !wx.cloud.callContainer) { reject(new Error('当前微信基础库不支持云托管调用，请更新基础库及微信客户端。')); return }
@@ -33,12 +39,40 @@ function assetUrl(id, version, page) {
   })
   return Promise.resolve(config.baseUrl.replace(/\/$/, '') + path)
 }
+function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)) }
+async function chat(question, history) {
+  const data = { question, history: history || [] }
+  if (config.mode !== 'container') return request('/chat', { method: 'POST', data })
+  const started = await request('/chat/jobs', { method: 'POST', data }).catch(error => {
+    if (/HTTP 404|接口不存在/.test(error.message)) throw new Error('云端后端尚未支持异步问答，请部署 2026-10-20-chat-v3 或更新版本，再重新编译小程序。')
+    throw error
+  })
+  if (started.status === 'completed') return started.result
+  if (!started.jobId || started.status !== 'running') throw new Error('云端未返回有效回答任务，请检查部署版本。')
+  const deadline = Date.now() + 100000
+  let failures = 0
+  while (Date.now() < deadline) {
+    await delay(1000)
+    let result
+    try { result = await request('/chat/jobs/' + encodeURIComponent(started.jobId)) }
+    catch (error) {
+      // Retry only fetching the same job, never submit the model request twice.
+      if (error.transport && ++failures <= 3) continue
+      throw new Error(error.message + '（任务号：' + started.jobId + '）')
+    }
+    failures = 0
+    if (result.status === 'completed') return result.result
+    if (result.status === 'failed') throw new Error(((result.error || {}).message || '模型回答失败。') + '（任务号：' + started.jobId + '）')
+    if (result.status !== 'running') throw new Error('回答任务状态异常。')
+  }
+  throw new Error('等待模型回答超时，请稍后重试。任务号：' + started.jobId)
+}
 module.exports = {
   originalUrl: (id, version) => config.mode === 'container' ? '' : config.baseUrl.replace(/\/$/, '') + assetPath(id, version),
   pageImageUrl: (id, version, n) => config.mode === 'container' ? '' : config.baseUrl.replace(/\/$/, '') + assetPath(id, version, n),
   assetUrl,
   health: () => request('/health'),
-  chat: question => request('/chat', { method: 'POST', data: { question } }),
+  chat,
   documents: () => request('/documents'),
   page: (id, version, n) => request('/documents/' + encodeURIComponent(id) + '/pages/' + encodeURIComponent(n) + '?version=' + encodeURIComponent(version)),
   document: (id, version, offset) => request('/documents/' + encodeURIComponent(id) + '?version=' + encodeURIComponent(version || '') + '&offset=' + (offset || 0)),

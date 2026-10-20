@@ -72,4 +72,13 @@ async function uploadSnapshot(config) {
   uploaded++
   return { documentCount: index.documents.length, uploaded, prefix: key(config, '') }
 }
-module.exports = { loadCloudIndex, signedAsset, uploadSnapshot }
+async function saveChatJob(config,job){
+  await invoke(config,'putObject',{Key:key(config,'chat-jobs/'+job.id+'.json'),Body:JSON.stringify(job),ContentType:'application/json; charset=utf-8'})
+}
+async function loadChatJob(config,id){
+  try{
+    const result=await invoke(config,'getObject',{Key:key(config,'chat-jobs/'+id+'.json')})
+    return JSON.parse(Buffer.isBuffer(result.Body)?result.Body.toString('utf8'):result.Body)
+  }catch(error){if(error.statusCode===404)return null;throw error}
+}
+module.exports = { loadCloudIndex, signedAsset, uploadSnapshot, saveChatJob, loadChatJob }

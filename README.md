@@ -6,7 +6,7 @@
 
 ## 1. 启动
 
-需要 Node.js 22+，后端仅用内置模块，无需 npm install。
+需要 Node.js 22+，在 backend 先运行 npm ci 安装锁定依赖。
 
 在项目根目录用 PowerShell 执行：
 
@@ -20,7 +20,7 @@
 
 将 UTF-8 编码的 .txt / .md 材料放在 backend/materials 后再次执行 npm run import；导入后服务自动读取最新索引，不必重启。默认目录为空，不会将说明文件冒充业务材料。可在 .env 设置 MATERIALS_ROOT 为独立材料目录的绝对路径（Windows 建议正斜杠）。
 
-默认服务 http://127.0.0.1:3000，GET /health 检查状态。默认 MODEL_MODE=mock，以真实材料摘录进行联调，界面明确标识未调用模型。没有命中时返回材料不足。
+默认服务 http://127.0.0.1:3000，GET /health 检查状态。MODEL_MODE=mock 仅用于摘录联调，明确标识未调用模型；正式模型问答使用 MODEL_MODE=api。
 
 ## 2. 填写模型 API
 
@@ -39,25 +39,25 @@
 
 开发工具本地联调时可使用 http://127.0.0.1:3000，并开启本地不校验合法域名设置（只用于开发）。本机 project.private.config.json 中的开发调试设置不会提交 Git；新环境需在开发工具里自行开启。手机上的 127.0.0.1 指向手机自身，真机必须换为电脑局域网 IP 或可访问的 HTTPS 服务；局域网联调还需 HOST=0.0.0.0、同一网络及相应防火墙配置。由于当前没有登录和文件权限，不要把该开发服务直接暴露到公网。正式发布前实现鉴权、HTTPS、合法域名和权限隔离。
 
-前端三个页面：pages/index（聊天）、pages/library（材料库）、pages/source（证据和原文）。聊天为单轮独立问答，界面上的历史只保存在当前设备微信存储，最多 30 条，不发送历史给模型；“清空”可删除本机记录。
+前端三个页面：pages/index（聊天）、pages/library（材料库）、pages/source（证据和原文）。本机保存最多 30 条消息；每次提问发送最近最多 20 条历史、合计最多 12000 字符，每条最多 4000 字符。模型结合这些历史理解追问；不提供服务端跨设备会话。“清空”删除本机记录，也清除后续提问携带的上下文。
 
 ## 4. 存储和更新
 
 - backend/materials：待导入材料，不打包到小程序、不提交 Git。
-- backend/data/knowledge.json：开发版文本索引，中文双字词和英文关键词匹配；不是向量数据库。
+- backend/data/knowledge.json：原文分块与材料目录；API 模式由模型按语义选择并读取材料，倒排索引只用于 mock 摘录联调。
 - backend/data/originals：按哈希保存原文件快照，不覆盖同名旧版本。
 - 删除材料并重新导入后，不再可检索或从接口读取；旧快照仍在磁盘保留，需按后续保留策略清理。
 - 文档版本变化时旧引用返回明确的版本失效提示，避免打开错误版本；首版不支持历史版本在线查看。
 - TXT / Markdown 使用行号定位，不虚构页码；Markdown 作为纯文本显示。原文每次加载 80 行，命中片段单独完整显示。
-- PDF / DOCX / 图片、OCR、向量检索、云存储和多用户鉴权为后续扩展，当前没有实现。
+- 支持 DOC/DOCX/PPTX/XLSX/TXT/MD 和图片/视频；PDF、自动 OCR、语音转写及向量索引尚未实现。云托管与 COS 配置见 backend/DEPLOY.md。
 
-材料命中后才调用模型；所选片段会发送给配置的模型服务。API 输出引用只允许使用本次检索提供的编号，引用原文由后端读取。引用合法性校验不等于事实支持度验证。
+API 模式除三种预设问题外都调用模型，不再以关键词命中与否拦截。模型接收材料目录和对话历史，并通过工具选择、读取材料；实际引用原文由后端返回。没有相关材料时可正常提供通用回答，并区分材料依据与通用知识。引用合法性校验不等于事实支持度验证。
 
 ## 5. API
 
 - GET /health：模式、配置状态、材料数量。
 - GET /documents：材料列表。
-- POST /chat：JSON {"question":"问题"}，返回 answer、mode、citations。
+- POST /chat：JSON {"question":"问题","history":[{"role":"user","content":"此前问题"},{"role":"assistant","content":"此前回答"}]}，history 可省略，返回 answer、mode、modelInvoked、citations。
 - GET /documents/:id?version=...&offset=0：原文行分页。
 - GET /documents/:id/chunks/:chunkId?version=...：指定原始片段。
 - GET /documents/:id/original?version=...：下载原文件，当前前端使用原文查看页。
@@ -81,11 +81,15 @@
 
 本轮实现日期：2026-10-20。
 
+### 云托管问答等待方式（chat-v3）
+
+云托管小程序通过 `/chat/jobs` 提交任务和轮询结果，避免一次请求等待整个多轮模型调用。后端需部署 `2026-10-20-chat-v3` 并重新编译小程序；只更新后端或只设置 timeout=60000 均不足以切换问答链路。COS 任务状态需要 `chat-jobs/` 子目录读写权限；任务运行、费用及保留配置见 backend/DEPLOY.md 的“问答超时修正”。
+
 ## 多格式材料更新（2026-10-20）
 
 后端现在需要先运行 npm ci 安装锁定依赖，再执行 npm run import。支持 DOC、DOCX、PPTX、XLSX、TXT、MD；PPT 保留幻灯片编号，Excel 保留工作表和行位置。文档只提取文字，不自动 OCR 图片；Excel 读取保存值，不计算公式。旧版 DOC 直接解析正文。
 
-JPG/JPEG/PNG/WebP/MP4 原件会收录并支持图片预览/视频播放，无文字时状态为 needs_text，不参与内容问答。可添加完整文件名加 .txt 的配套文本，例如 1.jpg.txt 或 1..mp4.txt；重新导入后文本作为该媒体的检索依据。系统没有自动 OCR、语音转写或视频画面识别，不能把已收录当作已理解媒体内容。配套文本不得超过 5MB。
+JPG/JPEG/PNG/WebP/MP4 原件收录后支持图片预览/视频播放。无文字时状态为 name_only，模型按文件名称语义匹配并引用；这不代表模型识别了画面或音频。旧索引中的无文字媒体也会自动补充名称元数据，无需先重新导入。可添加完整文件名加 .txt 的配套文本，例如 1.jpg.txt 或 1..mp4.txt；重新导入后文本作为该媒体的问答依据。配套文本不得超过 5MB。
 
 Office 与媒体上限 512MB；按流计算哈希和传输视频，视频支持 Range。大 Office 文件在手机端可能无法打开，可先查看提取文本或在电脑打开原件。原件快照保存在 backend/data/originals，需预留磁盘空间；材料无修改时不会重复复制。详细结果见 backend/data/import-report.json。
 
@@ -95,17 +99,17 @@ Office 与媒体上限 512MB；按流计算哈希和传输视频，视频支持 
 
 局域网联调时，将 config/api.js 的 baseUrl 改为 http://<电脑局域网IP>:3000，并在 backend/.env 设置 HOST=0.0.0.0；模拟器与手机共用此地址。电脑换网络/IP 后需更新。手机浏览器访问该地址的 /health 先验证连通；后端重启才能使 .env 生效。手机与电脑需同一网络且路由器允许设备互访。若 Windows 防火墙提示，允许 Node 在可信的专用网络通信，不要关闭整个防火墙。微信调试需要启用开发网络设置，正式使用配置 HTTPS 合法域名。
 
-已有模型配置时，将 MODEL_MODE=api；只填写密钥但保留 mock 不会调用模型。API 地址可填完整 chat/completions 或兼容服务根地址，适配器自动补齐路径。后台日志 [model] requesting/completed 可验证是否调用，响应包含 modelInvoked；没有检索依据时不调用模型。模型 Key 不输出到日志。未执行真实模型测试时，不代表供应商接口已经验证。
+已有模型配置时，将 MODEL_MODE=api；显式保留 mock 不会调用模型。API 地址可填完整 chat/completions 或兼容服务根地址，适配器自动补齐路径。材料选择需要模型服务支持 Chat Completions 的 tools/tool_calls。后台日志 [model] requesting/completed 可验证是否调用，响应包含 modelInvoked；没有检索依据也会调用模型。模型 Key 不输出到日志。未执行真实模型测试时，不代表供应商接口已经验证。
 
 原文媒体页面使用 webview 渲染器，视频支持错误详情与下载到本机后播放作为后备方式。当前材料的 MP4 检测到 AVC/AAC 标记，仍以微信实际解码为准。无需重新导入材料。
 
 ## 按页引用与输入节省（2026-10-20）
 
-已添加问候、感谢、身份介绍、再见的本地随机回复；这些消息不检索材料、不调用模型。混合业务提问仍走检索。检索无足够命中时不调用模型，也不附无关材料。
+仅“你好”“再见”“你是什么模型”使用本地预设回复（忽略首尾空白及常见标点）；“你是什么模型”直接返回后端配置 MODEL_NAME 的值，未配置时明确提示。“谢谢”“你是谁”和带业务内容的混合提问都调用模型。
 
-导入生成 backend/data/catalog.json 目录与 knowledge.json 倒排索引、分块和 PPT 页文字。按文件哈希及配套文本哈希复用解析结果，重复 import 不重解析未变化材料。问答由服务器检索，模型仅收到最多 3 个片段、总计不超过 1800 字，每段最多 650 字；该限额只计证据正文，不含问题、提示词和 JSON 元数据，也不是精确 token 数。
+导入生成 backend/data/catalog.json 目录与 knowledge.json 分块、索引和 PPT 页文字。按文件哈希及配套文本哈希复用解析结果。API 模式每次目录最多展示 40 份材料并可翻页，模型调用 list_materials / read_material 主动选择；一次读取最多 3 个完整分块，本轮最多新增 18 个分块，最多 5 轮工具调用，随后生成最终回答；总请求受 MODEL_TIMEOUT_MS 限制。mock 摘录保留 3 段 / 1800 字限额。
 
-PPT 引用保留 pageNumber，点来源进入对应幻灯片，可前后翻页。有页图时显示原版图片，未生成时明确显示提取文字。页图存放 backend/data/previews/{documentId}/{version}/{页号}.png，不发送给文本模型。PowerPoint 导出脚本 backend/scripts/export-slides.ps1 只读打开原件并禁用宏。
+回答下方直接展示依赖材料的完整引用分块，不再裁切或要求点击展开；PPT 展示引用页全文并尝试加载页图，图片直接显示，视频直接播放。完整文件入口仍保留。聊天页使用 webview 渲染器以支持视频；云端媒体使用短期签名链接，重进页面或点击重试会刷新。PPT 页图存放 backend/data/previews/{documentId}/{version}/{页号}.png，不发送给文本模型。PowerPoint 导出脚本 backend/scripts/export-slides.ps1 只读打开原件并禁用宏。
 
 输入框占据可用宽度，发送按钮固定 112rpx。变更后重启后端并重新编译小程序。
 

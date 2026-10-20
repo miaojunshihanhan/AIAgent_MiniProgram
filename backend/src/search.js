@@ -32,7 +32,7 @@ function compactEvidence(hits,maxChars=1800){
  let left=maxChars;const evidence=[]
  for(const {doc,chunk}of hits){if(left<80)break
   const quote=chunk.text.slice(0,Math.min(left,650));left-=quote.length
-  evidence.push({id:String(evidence.length+1),documentId:doc.id,documentVersion:doc.version,chunkId:chunk.id,title:doc.title,quote,pageNumber:chunk.pageNumber||null,lineStart:chunk.lineStart,lineEnd:chunk.lineEnd,
+  evidence.push({id:String(evidence.length+1),documentId:doc.id,documentVersion:doc.version,chunkId:chunk.id,title:doc.title,kind:doc.kind||'text',metadataOnly:chunk.metadataOnly===true,quote,pageNumber:chunk.pageNumber||null,lineStart:chunk.lineStart,lineEnd:chunk.lineEnd,
    location:chunk.location||('第 '+chunk.lineStart+'–'+chunk.lineEnd+' 行')})
  }
  return evidence

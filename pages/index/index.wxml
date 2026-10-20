@@ -1,7 +1,7 @@
 <navigation-bar title="广州华商学院 AI助学" back="{{false}}" color="#17233d" background="#f4f7fc"></navigation-bar>
 <view class="toolbar">
   <text class="eyebrow">KNOWLEDGE ASSISTANT</text>
-  <view class="toolbar-actions"><button class="small-button" bindtap="openLibrary">资料库</button><button class="small-button muted-button" bindtap="clearChat" disabled="{{sending}}">清空</button></view>
+  <view class="toolbar-actions"><button class="small-button" bindtap="openLibrary">资料库</button><button class="small-button muted-button" bindtap="clearChat" disabled="{{sending}}" style="position: relative; left: 0rpx; top: 0rpx; width: 195rpx; display: block; box-sizing: border-box">清空</button></view>
 </view>
 <view class="status" bindtap="refreshHealth"><view class="status-dot {{ready ? 'online' : ''}}"></view><text>{{status}}</text></view>
 <scroll-view class="chat-scroll" scroll-y type="list" scroll-into-view="{{scrollInto}}" scroll-with-animation>
@@ -13,9 +13,16 @@
   <view wx:for="{{messages}}" wx:key="id" id="message-{{item.id}}" class="message {{item.role}}">
     <text class="role-label">{{item.role === 'user' ? '我' : '材料助手'}}</text>
     <view class="bubble"><view wx:for="{{item.lines}}" wx:for-item="line" wx:for-index="lineIndex" wx:key="lineIndex" class="message-line"><text class="message-text" selectable>{{line}}</text></view></view>
-    <view wx:if="{{item.citations.length}}" class="sources"><text class="sources-label">参考原材料 · 点击查看</text>
-      <view wx:for="{{item.citations}}" wx:for-item="source" wx:key="chunkId" class="source-card" data-source="{{source}}" bindtap="openSource">
-        <view class="source-title">[{{source.id}}] {{source.title}}</view><view class="source-location">{{source.location}}</view><view class="source-quote">{{source.quote}}</view><view class="source-link">查看证据与全文 →</view>
+    <view wx:if="{{item.citations.length}}" class="sources"><text class="sources-label">本次回答依赖的材料</text>
+      <view wx:for="{{item.citations}}" wx:for-item="source" wx:key="chunkId" class="source-card">
+        <view class="source-title">[{{source.id}}] {{source.title}}</view><view class="source-location">{{source.location}}</view>
+        <view wx:if="{{source.assetLoading}}" class="source-location">正在加载原材料…</view>
+        <image wx:if="{{source.assetPath}}" class="source-image" src="{{source.assetPath}}" mode="widthFix" data-source="{{source}}" data-message="{{item.id}}" bindtap="previewSourceImage" binderror="onSourceAssetError"/>
+        <video wx:if="{{source.kind === 'video' && source.assetUrl}}" class="source-video" src="{{source.assetUrl}}" controls object-fit="contain" data-source="{{source}}" data-message="{{item.id}}" binderror="onSourceAssetError"/>
+        <text class="source-quote" selectable>{{source.pageText || source.quote}}</text>
+        <view wx:if="{{source.assetError}}" class="source-asset-error">{{source.assetError}}</view>
+        <button wx:if="{{source.assetError}}" class="small-button" data-source="{{source}}" data-message="{{item.id}}" bindtap="retrySourceAsset">重试加载材料</button>
+        <view class="source-link" data-source="{{source}}" bindtap="openSource">打开完整原文件 →</view>
       </view>
     </view>
   </view>
@@ -24,5 +31,5 @@
 </scroll-view>
 <view class="composer"><view wx:if="{{error}}" class="error-banner">{{error}}</view>
   <view class="input-row"><textarea class="question-input" value="{{input}}" bindinput="onInput" placeholder="输入与材料有关的问题…" maxlength="20000" auto-height disabled="{{sending}}" show-confirm-bar="{{false}}"/><button class="send-button" bindtap="send" loading="{{sending}}" disabled="{{sending || !input}}">发送</button></view>
-  <view class="composer-note">单轮材料问答 · 记录仅存本机 · 关键结论请核对原文</view>
+  <view class="composer-note">支持多轮追问 · 最近对话随提问发送给模型 · 来源直接展示</view>
 </view>

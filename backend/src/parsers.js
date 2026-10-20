@@ -53,9 +53,9 @@ async function parseMaterial(filename, ext) {
       try {if((await fs.stat(candidate)).size>5*1024*1024)throw new Error('配套文本超过 5MB');text=new TextDecoder('utf-8',{fatal:true}).decode(await fs.readFile(candidate));sidecar=path.basename(candidate);break}
       catch(error){if(error.code!=='ENOENT')throw error}
     }
-    return {kind:imageFormats.has(ext)?'image':'video', status:text.trim()?'ready':'needs_text', sidecar,
-      sections:text.trim()?[{location:'配套说明 / 转写文本（非自动识别）',text}]:[],
-      warning:text.trim()?'媒体检索依据为配套文本，未自动识别画面或音频':'已收录原文件，尚无 OCR / 转写文字，暂不参与内容问答'}
+    return {kind:imageFormats.has(ext)?'image':'video', status:text.trim()?'ready':'name_only', sidecar,
+      sections:text.trim()?[{location:'配套说明 / 转写文本（非自动识别）',text}]:[{location:'文件名称（未识别媒体内容）',text:'文件名：'+path.basename(filename)+'\n仅依据名称匹配，尚未识别图片画面或视频内容。',metadataOnly:true}],
+      warning:text.trim()?'媒体检索依据为配套文本，未自动识别画面或音频':'可按名称匹配并展示原文件；尚未识别画面、音频或视频内容'}
   }
   if (ext === '.doc') {
     const doc=await new WordExtractor().extract(filename)

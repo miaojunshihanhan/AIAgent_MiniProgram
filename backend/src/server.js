@@ -37,8 +37,7 @@ function createServer(config = defaults, dependencies = {}) {
       if (config.deployment === 'cloud') {
         if (!req.headers['x-wx-source'] || !req.headers['x-wx-openid']) throw fail(401, '请通过已关联的小程序调用此服务。')
         if (req.method === 'GET' && url.pathname === '/whoami') return send(res, 200, { openid: req.headers['x-wx-openid'] })
-        if (!config.allowedOpenids || !config.allowedOpenids.length) throw fail(503, '请先在服务环境变量配置 ALLOWED_OPENIDS，再访问资料。')
-        if (!config.allowedOpenids.includes(req.headers['x-wx-openid'])) throw fail(403, '当前微信账号无权访问资料，请管理员将此账号 OpenID 加入 ALLOWED_OPENIDS。')
+        // All mini program users can access the shared library; no per-user allowlist.
       }
       if (req.method === 'GET' && url.pathname === '/health') {
         const index = await loadIndex(config)

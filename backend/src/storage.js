@@ -16,6 +16,7 @@ function invoke(config, method, params) {
   return new Promise((resolve, reject) => client(config)[method]({ Bucket: config.cosBucket, Region: config.cosRegion, ...params }, (error, result) => error ? reject(error) : resolve(result)))
 }
 async function loadCloudIndex(config) {
+  client(config)
   let entry = indexes.get(config)
   if (entry && entry.value && Date.now() < entry.expires) return entry.value
   if (entry && entry.pending) return entry.pending

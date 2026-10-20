@@ -28,7 +28,7 @@ function readAnswer(content,evidence){
  return {answer:output.answer,usedIds,mode:'api'}
 }
 async function generateAnswer(question,evidence,config,fetchImpl=fetch){
- if(config.mode==='api'&&(!config.apiKey||!config.apiUrl||!config.model||config.apiUrl.includes('YOUR-PROVIDER')))throw modelError('请先在 backend/.env 填写模型 API 地址、密钥和模型名。',503)
+ if(config.mode==='api'&&(!config.apiKey||!config.apiUrl||!config.model||config.apiUrl.includes('YOUR-PROVIDER')))throw modelError('请在云托管环境变量中填写 MODEL_API_URL、MODEL_API_KEY、MODEL_NAME；本地开发也可在 backend/.env 配置。',503)
  if(!['api','mock'].includes(config.mode))throw modelError('MODEL_MODE 只能为 mock 或 api。',503)
  if(!evidence.length)return {answer:'现有材料中未检索到足够依据，请换一种问法或补充相关材料。',usedIds:[],mode:config.mode,modelInvoked:false}
  if(config.mode==='mock')return {answer:'【本地摘录模式，尚未调用模型】\n以下是与问题相关的原材料，请结合上下文核对：\n\n'+evidence.map(e=>'['+e.id+'] '+e.title+'\n'+e.quote).join('\n\n'),usedIds:evidence.map(e=>e.id),mode:'mock',modelInvoked:false}

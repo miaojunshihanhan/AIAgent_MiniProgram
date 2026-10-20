@@ -2,6 +2,20 @@
 
 使用本项目 backend，不需要把业务代码搬到下载的 Express 计数器模板。现有后端是 Node HTTP 服务，不依赖 Express 或 MySQL。
 
+## 环境变量读取说明
+
+生产容器直接读取云托管注入的 process.env，不读取 .env 文件。仅本地开发读取 backend/.env 作为后备，且同一配置的运行环境变量（包括别名）始终优先。
+
+- 模型地址：MODEL_API_URL（也支持 API_URL）。
+- 模型密钥：MODEL_API_KEY（也支持 API_KEY）。
+- 模型名称：MODEL_NAME（也支持 MODEL）。
+- 同一环境同时提供标准名称和别名时，标准名称优先。没有明确 MODEL_MODE 但有模型密钥时，自动启用 api；显式 MODEL_MODE=mock 仍使用摘录。
+- COS 使用 COS_BUCKET、COS_REGION、COS_SECRET_ID、COS_SECRET_KEY，以及可选 COS_PREFIX、COS_SESSION_TOKEN。桶名和地域本身不足以访问私有桶，还需要凭据。
+- MYSQL_ADDRESS、MYSQL_PASSWORD、MYSQL_USERNAME 是原 Express 计数器模板的数据库变量；本项目没有数据库业务，不读取它们，也不会自动把 COS 资料写入 MySQL。保留这些变量不影响启动。
+- 云托管仍需保持 DEPLOYMENT_MODE=cloud、STORAGE_MODE=cos、PORT=8080。所有通过已关联小程序调用的用户都可访问共享资料库；ALLOWED_OPENIDS 已停用，可从环境变量删除，旧值不会限制用户。
+
+修改云端变量后按控制台提示使服务新配置生效；无需把真实密钥写进代码或 GitHub。变量是否生效、COS 是否可读取和模型是否实际响应，需部署后验证。
+
 ## GitHub 自动部署（替代手动上传 ZIP）
 
 本项目现有 origin 为 https://github.com/miaojunshihanhan/AIAgent_MiniProgram.git，当前分支 main。建议在已有 express-ec98 服务的流水线中关联此仓库，不要用模板仓库覆盖现有项目。自动部署只会监听流水线绑定的仓库及分支。
@@ -34,7 +48,7 @@ git push origin main
 
 推送后到云托管流水线检查此次提交 SHA、构建日志、部署结果和版本流量。若只创建了版本，按控制台配置完成发布；不要仅凭 GitHub 推送成功判定部署成功。此文档不包含预设的 GitHub Actions YAML，先使用控制台为服务创建的流水线。
 
-自动部署只更新代码镜像：COS 桶、模型密钥、服务环境变量和 OpenID 白名单仍须配置；资料仍通过下文的 npm run upload:cos 上传。推送 GitHub 不会上传被忽略的业务资料。
+自动部署只更新代码镜像：COS 桶、模型密钥和服务环境变量仍须配置；资料仍通过下文的 npm run upload:cos 上传。推送 GitHub 不会上传被忽略的业务资料。
 
 ## 1. 创建资料存储桶
 
@@ -59,13 +73,11 @@ COS_SECRET_KEY=你的上传凭据SecretKey
 ```powershell
 Set-Location D:\VsCodePrograms\Agent\backend
 npm ci
-# 已有 data/knowledge.json 与 originals、previews 时可直接上传。
-# 新增、删除或修改 materials 中的资料后，先执行：
-npm run import
+# 自动扫描 materials 并重新生成本地索引，支持新增、删除、改名和内容修改：
 npm run upload:cos
 ```
 
-脚本会将当前索引引用的原件、已有 PPT 页图以及索引上传到 COS：
+脚本默认读取 D:\VsCodePrograms\Agent\backend\materials（可通过 MATERIALS_ROOT 修改），先同步材料名称和内容到 data，再将新索引引用的原件、已有 PPT 页图以及索引上传到 COS。只改文件名也会更新资料库标题和文档 ID，旧名称不会保留在新索引中；改名后的 PPT 页图需按新的文档 ID 重新生成。媒体的配套说明文件也应一起改名，例如 视频.mp4.txt：
 
 ```text
 knowledge-agent/knowledge.json
@@ -104,16 +116,15 @@ MODEL_API_KEY=沿用本地.env里的模型密钥
 MODEL_NAME=沿用本地.env里的模型名称
 MODEL_TIMEOUT_MS=45000
 MODEL_ENABLE_THINKING=false
-ALLOWED_OPENIDS=下一步获取的OpenID
 ```
 
-先不配置 ALLOWED_OPENIDS 也能启动并调用 /whoami，但无法读取任何资料。只联调时可 MODEL_MODE=mock。若本地模型使用 localhost 或电脑代理地址，应改为云端可访问的供应商 HTTPS 地址。不得将占位说明当作实际配置。构建完成后发布该版本并分配流量。
+无需配置 ALLOWED_OPENIDS，所有小程序用户都能访问。只联调时可 MODEL_MODE=mock。若本地模型使用 localhost 或电脑代理地址，应改为云端可访问的供应商 HTTPS 地址。不得将占位说明当作实际配置。构建完成后发布该版本并分配流量。
 
 ## 4. 关联小程序与访问权限
 
 确认此云托管环境关联了当前小程序。**关闭服务公网访问入口**，仅允许关联小程序通过微信网关调用；服务器读取网关注入的身份头，不能把这些头当作开放公网接口的身份校验。/whoami 仅返回当前调用人的 OpenID。
 
-小程序 config/api.js 已设置好环境和服务名；app.js 会初始化 wx.cloud。重新编译小程序，在开发者工具控制台执行：
+小程序 config/api.js 已设置好环境和服务名；app.js 会初始化 wx.cloud。无需收集用户 OpenID 或配置白名单，重新编译即可调用。需要调试当前调用身份时，可在开发者工具控制台执行：
 
 ```js
 wx.cloud.callContainer({
@@ -124,15 +135,15 @@ wx.cloud.callContainer({
 }).then(res => console.log(res.data))
 ```
 
-将返回的 openid 填入云托管环境变量 ALLOWED_OPENIDS 并按控制台提示使新配置生效；多人访问用英文逗号分隔各自 OpenID。空名单默认拒绝资料访问；客户端不能自行指定 OpenID。只允许名单成员访问共享资料库，不提供多租户隔离。
+返回的 openid 仅用于身份调试，不需要填入环境变量。所有小程序用户共享同一资料库；云端仍要求微信网关注入的身份头。ALLOWED_OPENIDS 旧配置可以删除。
 
 在小程序管理后台的服务器域名设置中，将该 COS 桶的 HTTPS 域名加入 downloadFile 合法域名，如 https://完整桶名.cos.地域.myqcloud.com。不要带路径或签名参数。图片、视频、PPT 原件和页图从 COS 临时签名链接下载，链接有效期 10 分钟，不要分享。视频长时间停留后失败时点「下载到本机后播放」，会重新获取链接。页面和元数据通过 callContainer 请求。
 
 ## 5. 验证与日常更新
 
-重新编译小程序，首页应显示材料数；测试一个材料问题，检查回答引用；在资料库打开图片、视频、PPT 页图和原文件。若报 503 先检查环境变量和 COS 权限、索引是否上传；403 检查当前微信账号的 OpenID 白名单；下载失败检查 downloadFile 域名。
+重新编译小程序，首页应显示材料数；测试一个材料问题，检查回答引用；在资料库打开图片、视频、PPT 页图和原文件。若报 503 先检查环境变量和 COS 权限、索引是否上传；401 检查小程序关联与云调用身份；下载失败检查 downloadFile 域名。
 
-资料变动：在电脑 backend/materials 修改 → npm run import → npm run upload:cos。不必重建代码镜像。已有 PPT 页图来自本地 data/previews；新 PPT 未生成页图时仍可查看提取文字。
+资料变动：在电脑 backend/materials 修改或改名 → npm run upload:cos（自动导入后上传）。不必重建代码镜像。已有 PPT 页图来自本地 data/previews；新 PPT 未生成页图时仍可查看提取文字。
 
 代码变动：上传 backend 创建新版本 → 构建 → 发布。小程序代码变动：重新编译/上传小程序。模型密钥变动：只更新服务环境变量。原计数器 /api/count 已被本业务 API 替代，不应再用于验证聊天功能。
 

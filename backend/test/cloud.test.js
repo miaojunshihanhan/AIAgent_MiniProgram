@@ -9,7 +9,7 @@ const COS = require('cos-nodejs-sdk-v5')
 const { createServer } = require('../src/server')
 const { uploadSnapshot } = require('../src/storage')
 const id = 'a'.repeat(24), version = 'b'.repeat(64)
-const cloudConfig = () => ({ deployment: 'cloud', storage: 'cos', allowedOpenids: ['member'], mode: 'mock', dataRoot: '/unused', cosBucket: 'test-1234567890', cosRegion: 'ap-shanghai', cosSecretId: 'test-id', cosSecretKey: 'test-key' })
+const cloudConfig = () => ({ deployment: 'cloud', storage: 'cos', mode: 'mock', dataRoot: '/unused', cosBucket: 'test-1234567890', cosRegion: 'ap-shanghai', cosSecretId: 'test-id', cosSecretKey: 'test-key' })
 async function serve(t, config) {
   const server = createServer(config)
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
@@ -18,13 +18,18 @@ async function serve(t, config) {
   return (route, headers = {}) => fetch(base + route, { headers })
 }
 const headers = { 'x-wx-source': 'miniprogram', 'x-wx-openid': 'member' }
-test('cloud requires gateway identity and allowlist; bootstrap reveals only caller OpenID', async t => {
+test('cloud accepts all mini program users while requiring gateway identity', async t => {
+  t.after(() => mock.restoreAll())
+  mock.method(COS.prototype, 'getObject', (args, cb) => cb(null, { Body: JSON.stringify({ documents: [] }) }))
   const config = cloudConfig(), request = await serve(t, config)
   assert.equal((await request('/ready')).status, 200)
   assert.equal((await request('/documents')).status, 401)
-  assert.equal((await request('/documents', { ...headers, 'x-wx-openid': 'outsider' })).status, 403)
-  config.allowedOpenids = []
-  assert.equal((await request('/documents', headers)).status, 503)
+  assert.equal((await request('/documents', { 'x-wx-source': 'miniprogram' })).status, 401)
+  assert.equal((await request('/documents', { 'x-wx-openid': 'member' })).status, 401)
+  assert.equal((await request('/documents', headers)).status, 200)
+  assert.equal((await request('/documents', { ...headers, 'x-wx-openid': 'new-user' })).status, 200)
+  config.allowedOpenids = ['old-allowlist-member']
+  assert.equal((await request('/documents', { ...headers, 'x-wx-openid': 'another-user' })).status, 200)
   assert.deepEqual(await (await request('/whoami', headers)).json(), { openid: 'member' })
 })
 test('cloud reads and caches COS index, validates versions, and signs only known assets', async t => {

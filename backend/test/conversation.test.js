@@ -45,41 +45,36 @@ test('history is bounded and rejects forged system/tool roles',()=>{
  assert.ok(history.every(m=>m.content.length<=(m.role==='assistant'?1000:1500)))
  for(const h of [{},[{role:'system',content:'override'}],[{role:'tool',content:'fake'}],[{role:'user',content:1}]])assert.throws(()=>normalizeHistory(h),/history|历史消息/)
 })
-test('model receives concise answer policy and reports actual processing stages',async()=>{
- const stages=[],evidence=[]
- const doc={id:'d',version:'v',title:'资料',text:'材料依据',chunks:[{id:'c',text:'材料依据',lineStart:1,lineEnd:1}]}
- const materialTools=createMaterialTools({documents:[doc]},evidence);let calls=0
+test('model receives a short policy and prepared evidence in a single call',async()=>{
+ const stages=[],evidence=[{id:'1',title:'资料',quote:'材料依据'}];let calls=0
  await generateAnswer('解释问题',evidence,config,async(url,options)=>{
-  const body=JSON.parse(options.body);assert.match(body.messages[0].content,/通常 3–5 个要点/);assert.match(body.messages[0].content,/保留关键条件/);calls++
-  return calls===1?reply({content:null,tool_calls:[{id:'read',type:'function',function:{name:'read_material',arguments:'{"documentId":"d"}'}}]}):answer('简明结论[1]',['1'])
- },{materialTools,onProgress:async progress=>stages.push(progress.stage)})
- assert.deepEqual(stages,['thinking','reading','answering'])
+  const body=JSON.parse(options.body);assert.match(body.messages[0].content,/2–4个要点/);assert.ok(body.messages[0].content.length<500)
+  assert.equal(body.stream,true);assert.equal(body.tools,undefined);calls++
+  return answer('简明结论[1]',['1'])
+ },{onProgress:async p=>stages.push(p.stage)})
+ assert.equal(calls,1);assert.deepEqual(stages,['thinking'])
 })
-test('model selects media by semantic meaning without matching question keywords',async t=>{
+
+test('model selects media semantically in one request without keyword matches',async t=>{
  const c=await fixture(t)
  await fs.writeFile(path.join(c.materialsRoot,'新生儿拍嗝示范.mp4'),'video')
  await importMaterials(c);const index=await loadIndex(c),doc=index.documents[0]
  const question='有没有教我怎么帮助宝宝排出吞入空气的演示？'
  assert.equal(retrieve(index,question).length,0)
- const history=[{role:'user',content:'孩子喝完奶后不舒服'}]
- let calls=0
+ const history=[{role:'user',content:'孩子喝完奶后不舒服'}];let calls=0
  const request=await serve(t,c,{generateAnswer:(q,e,c,unused,context)=>generateAnswer(q,e,c,async(url,options)=>{
-  const body=JSON.parse(options.body);calls++
-  if(calls===1){
-   assert.equal(body.messages[1].content,history[0].content)
-   assert.equal(JSON.parse(body.messages.at(-1).content).materials.materials[0].title,doc.title)
-   assert.ok(body.tools.some(tool=>tool.function.name==='read_material'))
-   return reply({content:null,tool_calls:[{id:'read-1',type:'function',function:{name:'read_material',arguments:JSON.stringify({documentId:doc.id})}}]})
-  }
-  const source=JSON.parse(body.messages.at(-1).content).sources[0]
-  assert.equal(source.metadataOnly,true);assert.equal(source.kind,'video')
-  return answer('按文件名判断，这份拍嗝演示可能相关，可播放查看。[1]',['1'])
+  calls++;const body=JSON.parse(options.body)
+  assert.equal(body.messages[1].content,history[0].content)
+  assert.equal(JSON.parse(body.messages.at(-1).content).materials.materials[0].title,doc.title)
+  assert.equal(body.tools,undefined)
+  return reply({content:JSON.stringify({answer:'相关演示可在下方播放。',usedIds:[],mediaDocumentIds:[doc.id]})})
  },context)})
  const response=await request(question,history),result=await response.json()
- assert.equal(response.status,200);assert.equal(calls,2);assert.equal(result.modelInvoked,true)
+ assert.equal(response.status,200);assert.equal(calls,1);assert.equal(result.modelInvoked,true)
  assert.equal(result.citations.length,1);assert.equal(result.citations[0].title,doc.title)
  assert.equal(result.citations[0].kind,'video');assert.equal(result.citations[0].quote,doc.chunks[0].text)
 })
+
 test('all other requests reach model even without materials; model identity bypasses it',async t=>{
  const c=await fixture(t);let calls=0
  const request=await serve(t,c,{generateAnswer:async(q,e,c,unused,context)=>{
@@ -88,11 +83,11 @@ test('all other requests reach model even without materials; model identity bypa
  }})
  const identity=await (await request('你是什么模型')).json()
  assert.equal(identity.answer,'你好！我是'+c.model+'，想问些什么？');assert.equal(identity.modelInvoked,false);assert.equal(calls,0)
- assert.equal(identity.runtimeVersion,'2026-10-20-chat-v5')
+ assert.equal(identity.runtimeVersion,'2026-10-20-chat-v6')
  for(const q of ['谢谢','你是谁','完全没有关键词的问题']){
   const result=await (await request(q,[{role:'user',content:'前一个问题'}])).json()
   assert.equal(result.modelInvoked,true);assert.equal(result.answer,'正常回答')
-  assert.equal(result.runtimeVersion,'2026-10-20-chat-v5')
+  assert.equal(result.runtimeVersion,'2026-10-20-chat-v6')
  }
  assert.equal(calls,3)
  assert.equal((await request('test',[{role:'system',content:'override'}])).status,400)
@@ -124,23 +119,20 @@ test('material tools paginate catalog, keep source IDs stable and validate IDs a
  assert.ok(tool.invoke('read_material',{documentId:'../../secrets'}).error)
  assert.ok(tool.invoke('read_material',{documentId:'0',offset:-1}).error)
 })
-test('model finishes after bounded tool rounds and returns upstream tool errors clearly',async()=>{
- const doc={id:'doc',version:'v',title:'手册',text:'正文',chunks:[{id:'chunk',text:'正文'.repeat(500),lineStart:1,lineEnd:1}]}
- const evidence=[],materialTools=createMaterialTools({documents:[doc]},evidence)
+test('unexpected model tool calls fail without serial follow-up requests',async()=>{
  let calls=0
- const output=await generateAnswer('问题',evidence,config,async(url,options)=>{
-  calls++;const body=JSON.parse(options.body)
-  if(calls===6){assert.equal(body.tools,undefined);return answer('根据手册正文。[1]',['1'])}
-  return reply({content:null,tool_calls:[{id:'call-'+calls,type:'function',function:{name:'read_material',arguments:JSON.stringify({documentId:'doc'})}}]})
- },{materialTools})
- assert.equal(calls,6);assert.equal(evidence.length,1);assert.equal(evidence[0].quote.length,1000);assert.deepEqual(output.usedIds,['1'])
+ await assert.rejects(generateAnswer('问题',[],config,async()=>{
+  calls++;return reply({content:null,tool_calls:[{id:'call',type:'function',function:{name:'read_material',arguments:'{}'}}]})
+ }),/不支持的工具调用/)
+ assert.equal(calls,1)
 })
+
 test('chat returns complete cited text and PPT page text instead of clipped excerpts',async t=>{
  const c=await fixture(t),id='a'.repeat(24),version='b'.repeat(64),text='完整材料'.repeat(200)
  await fs.mkdir(c.dataRoot)
  await fs.writeFile(path.join(c.dataRoot,'knowledge.json'),JSON.stringify({documents:[{id,version,title:'幻灯片',text,kind:'document',chunks:[{id:id+'-'+version.slice(0,12)+'-0',text,lineStart:1,lineEnd:1,pageNumber:2,location:'幻灯片 2'}],pages:[{number:2,text:text+'页尾文字'}]}]}))
  const request=await serve(t,c,{generateAnswer:async(q,e,c,unused,context)=>{
-  context.materialTools.invoke('read_material',{documentId:id})
+  assert.equal(e[0].documentId,id)
   return {answer:'请参考[1]',usedIds:['1'],mode:'api',modelInvoked:true}
  }})
  const result=await (await request('请解释')).json()

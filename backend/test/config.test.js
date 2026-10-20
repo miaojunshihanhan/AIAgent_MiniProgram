@@ -23,4 +23,7 @@ test('local defaults work and unused template MySQL variables do not alter stora
   assert.equal(config.storage, 'local'); assert.equal(config.port, 3000); assert.equal(config.mode, 'mock')
   assert.equal(config.timeout,90000)
   assert.equal(createConfig({MODEL_TIMEOUT_MS:'45000'}).timeout,45000)
+  assert.equal(createConfig({MODEL_NAME:'qwen3.8-max'}).enableThinking,false)
+  assert.equal(createConfig({MODEL_NAME:'qwen3.8-max',MODEL_ENABLE_THINKING:'true'}).enableThinking,true)
+  assert.equal(createConfig({MODEL_NAME:'another-provider'}).enableThinking,undefined)
 })

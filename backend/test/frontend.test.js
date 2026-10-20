@@ -13,6 +13,16 @@ function page(relative, api, wx = {}) {
   return definition
 }
 const tick = () => new Promise(resolve => setImmediate(resolve))
+test('partial answers update one bubble and final answer replaces it',async()=>{
+ let stream,finish
+ const app=page('pages/index/index.js',{chat:(q,h,options)=>{stream=options.onText;return new Promise(resolve=>{finish=resolve})}},{setStorageSync:()=>{}})
+ app.setData({input:'我的问题'});app.send()
+ stream('第一段');stream('第一段\n第二段')
+ assert.equal(app.data.messages.length,2);assert.equal(app.data.messages[1].partial,true)
+ assert.equal(app.data.messages[1].content,'第一段\n第二段')
+ finish({answer:'最终要点',citations:[],mode:'api'});await tick()
+ assert.equal(app.data.messages.length,2);assert.equal(app.data.messages[1].content,'最终要点');assert.equal(app.data.messages[1].partial,undefined)
+})
 test('chat sends question, persists cited answer, and opens exact source route', async () => {
   const saved = [], navigated = []
   const source = {documentId:'doc',documentVersion:'version',chunkId:'chunk'}
@@ -172,9 +182,9 @@ test('cached chat receives the same paragraph rendering after reload', async () 
 })
 
 test('health identifies the deployed conversation backend and configured model mode',async()=>{
-  const app=page('pages/index/index.js',{health:async()=>({modelMode:'api',modelConfigured:true,documentCount:3,runtimeVersion:'2026-10-20-chat-v4',capabilities:{conversation:true,materialTools:true,asyncChat:true,chatProgress:true}})})
+  const app=page('pages/index/index.js',{health:async()=>({modelMode:'api',modelConfigured:true,documentCount:3,runtimeVersion:'2026-10-20-chat-v6',capabilities:{conversation:true,materialTools:true,asyncChat:true,chatProgress:true,streaming:true,singleModelCall:true}})})
   app.refreshHealth();await tick()
-  assert.equal(app.data.status,'模型 API 模式 · 3 份材料')
+  assert.equal(app.data.status,'模型 API 模式 · 流式 · 3 份材料')
 })
 
 test('image preview downloads and decodes a local file before display and zoom', async () => {

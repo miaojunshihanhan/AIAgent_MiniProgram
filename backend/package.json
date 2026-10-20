@@ -9,12 +9,14 @@
     "start": "node src/server.js",
     "import": "node scripts/import-materials.js",
     "upload:cos": "node scripts/upload-cos.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "profile:chat": "node scripts/profile-chat.js"
   },
   "dependencies": {
     "cos-nodejs-sdk-v5": "^3.0.0",
     "fast-xml-parser": "^5.11.2",
     "word-extractor": "^1.0.4",
+    "ws": "^8.22.0",
     "yauzl": "^3.4.0"
   }
 }

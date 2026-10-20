@@ -5,6 +5,10 @@ $backendRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $target = Join-Path $backendRoot 'cloudrun-upload.zip'
 $temp = Join-Path $backendRoot 'cloudrun-upload.tmp.zip'
 $files = @(Get-ChildItem -LiteralPath (Join-Path $backendRoot 'src') -Filter '*.js' -File)
+foreach ($file in $files) {
+    & node --check $file.FullName
+    if ($LASTEXITCODE -ne 0) { throw "Invalid JavaScript: $($file.Name)" }
+}
 foreach ($name in @('Dockerfile', '.dockerignore', 'package.json', 'package-lock.json')) {
     $files += Get-Item -LiteralPath (Join-Path $backendRoot $name)
 }
@@ -18,7 +22,7 @@ try {
 } finally { $archive.Dispose() }
 $archive = [IO.Compression.ZipFile]::OpenRead($temp)
 try {
-    foreach ($required in @('src/context.js', 'src/jobs.js', 'src/server.js', 'src/model.js', 'Dockerfile')) {
+    foreach ($required in @('src/context.js', 'src/jobs.js', 'src/server.js', 'src/model.js', 'src/stream.js', 'src/socket.js', 'src/materials.js', 'Dockerfile')) {
         if (-not $archive.GetEntry($required)) { throw "Missing deployment file: $required" }
     }
     foreach ($name in @('src/model.js', 'src/server.js')) {
@@ -28,6 +32,8 @@ try {
             $oldRefusal = -join (@(0x73B0,0x6709,0x6750,0x6599,0x4E2D,0x672A,0x68C0,0x7D22,0x5230,0x8DB3,0x591F,0x4F9D,0x636E) | ForEach-Object { [char]$_ })
             if ($source.Contains($oldRefusal)) { throw "Old refusal code in $name" }
             if ($name -eq 'src/model.js' -and -not $source.Contains('materialTools')) { throw 'Missing model material tools' }
+            if ($name -eq 'src/model.js' -and -not $source.Contains('stream:true')) { throw 'Missing streaming generation' }
+            if ($name -eq 'src/server.js' -and -not $source.Contains('2026-10-20-chat-v6')) { throw 'Unexpected runtime version' }
         } finally { $reader.Dispose() }
     }
 } finally { $archive.Dispose() }

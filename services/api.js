@@ -40,10 +40,39 @@ function assetUrl(id, version, page) {
   return Promise.resolve(config.baseUrl.replace(/\/$/, '') + path)
 }
 function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)) }
+function watchStream(jobId,options){
+ return new Promise(resolve=>{
+  let socket,settled=false,guard,check,idle
+  const finish=value=>{if(settled)return;settled=true;clearTimeout(guard);clearTimeout(idle);clearInterval(check);if(socket)try{socket.close({})}catch(_){}resolve(value)}
+  const resetIdle=()=>{clearTimeout(idle);idle=setTimeout(()=>finish({fallback:true}),15000)}
+  guard=setTimeout(()=>finish({fallback:true}),180000)
+  check=setInterval(()=>{if(options.isCancelled&&options.isCancelled())finish({paused:true})},250)
+  const attach=task=>{
+   if(settled){try{task.close({})}catch(_){}return}
+   socket=task
+   resetIdle()
+   task.onMessage(event=>{
+    if(settled)return
+    resetIdle()
+    let value;try{value=JSON.parse(event.data)}catch(_){finish({fallback:true});return}
+    if(options.onProgress)options.onProgress(value)
+    if(typeof value.partialAnswer==='string'&&value.partialAnswer&&options.onText)options.onText(value.partialAnswer)
+    if(value.status==='completed')finish({result:value.result})
+    else if(value.status==='failed')finish({error:(value.error||{}).message||'模型回答失败。'})
+   })
+   task.onError(()=>finish({fallback:true}));task.onClose(()=>finish({fallback:true}))
+  }
+  if(config.mode==='container'){
+   wx.cloud.connectContainer({config:{env:config.env},service:config.service,path:'/chat/jobs/'+encodeURIComponent(jobId)+'/stream',timeout:10000,
+    success:res=>attach(res.socketTask),fail:()=>finish({fallback:true})})
+  }else attach(wx.connectSocket({url:config.baseUrl.replace(/^http/,'ws').replace(/\/$/,'')+'/chat/jobs/'+encodeURIComponent(jobId)+'/stream',timeout:10000,fail:()=>finish({fallback:true})}))
+ })
+}
 async function chat(question, history, options) {
   options = options || {}
   const data = { question, history: history || [] }
-  if (config.mode !== 'container') return request('/chat', { method: 'POST', data })
+  const streamAvailable=!!options.onText&&(config.mode==='container'?!!(wx.cloud&&wx.cloud.connectContainer):typeof wx.connectSocket==='function')
+  if (config.mode !== 'container'&&!streamAvailable&&!options.jobId) return request('/chat', { method: 'POST', data })
   const started = options.jobId ? {jobId:options.jobId,status:'running'} : await request('/chat/jobs', { method: 'POST', data }).catch(error => {
     if (/HTTP 404|接口不存在/.test(error.message)) throw new Error('云端后端尚未支持异步问答，请部署 2026-10-20-chat-v3 或更新版本，再重新编译小程序。')
     throw error
@@ -52,11 +81,18 @@ async function chat(question, history, options) {
   if (!started.jobId || started.status !== 'running') throw new Error('云端未返回有效回答任务，请检查部署版本。')
   if (options.onJob) options.onJob(started.jobId)
   if (options.onProgress) options.onProgress(started)
+  if(streamAvailable){
+    const live=await watchStream(started.jobId,options)
+    if(live.result)return live.result
+    if(live.error){const error=new Error(live.error+'（任务号：'+started.jobId+'）');error.terminal=true;throw error}
+    if(live.paused){const error=new Error('已暂停等待，可继续获取原回答。');error.jobId=started.jobId;throw error}
+    if(options.onProgress)options.onProgress({progress:{label:'实时连接已断开，正在获取原回答'}})
+  }
   const deadline = Date.now() + 180000
   let failures = 0
   while (Date.now() < deadline) {
     if (options.isCancelled && options.isCancelled()) { const error = new Error('已暂停等待，可继续获取原回答。'); error.jobId = started.jobId; throw error }
-    await delay(failures ? Math.min(6000, failures * 1500) : 1200)
+    await delay(failures ? Math.min(6000, failures * 1500) : 600)
     let result
     try { result = await request('/chat/jobs/' + encodeURIComponent(started.jobId)) }
     catch (error) {
@@ -69,6 +105,7 @@ async function chat(question, history, options) {
     }
     failures = 0
     if (options.onProgress) options.onProgress(result)
+    if (typeof result.partialAnswer==='string'&&result.partialAnswer&&options.onText) options.onText(result.partialAnswer)
     if (result.status === 'completed') return result.result
     if (result.status === 'failed') { const error = new Error(((result.error || {}).message || '模型回答失败。') + '（任务号：' + started.jobId + '）'); error.terminal = true; throw error }
     if (result.status !== 'running') throw new Error('回答任务状态异常。')

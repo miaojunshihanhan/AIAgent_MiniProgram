@@ -4,9 +4,21 @@
 
 ## 环境变量读取说明
 
+### chat-v6：单次模型调用与实时流式
+
+当前版本为 `2026-10-20-chat-v6`，`/health` 的 `streaming`、`singleModelCall`、`timings` 能力均为 true。需要部署新的 `cloudrun-upload.zip`，并重新编译、发布小程序；无需重新导入材料。
+
+- 模型接口使用 SSE `stream:true`，小程序通过 `wx.cloud.connectContainer` 的 WebSocket 接收增量文字。服务必须支持 WebSocket Upgrade；保持现有微信网关身份校验及私有访问方式。连接失败时自动查询同一个任务的增量快照，不重复提交模型。
+- 每个非预设问题只请求模型一次，不再执行工具调用循环。后端一次准备材料：目录上限 18000 字符、正文上限 24000 字符；每个文档先覆盖一段，再补充相关段落和其他段落。关键词评分仅帮助排序，未命中仍提供目录和正文并正常调用模型。超大资料库只提供预算内的部分内容，不能保证穷尽全文。
+- 系统提示词集中在 `backend/src/model.js` 的 `SYSTEM_PROMPT`，默认 2–4 个要点、约 150–250 字；明确要求详细时可展开，不硬截断。相关图片与视频继续按名称语义选择并在最终回答下方展示。
+- Qwen 默认发送 `enable_thinking=false`，减少隐藏推理等待；`MODEL_ENABLE_THINKING=true` 可显式开启，其他提供商默认不发送该扩展参数。生产已有环境变量会覆盖默认设置。模型总超时仍默认 90000 毫秒。
+- 搜索 `[timing] requestId=...` 关联同一问题：`job_create` 是首次持久化；`indexMs` 是索引加载；`prepareMs` 是材料准备；`firstTokenMs` / `firstAnswerMs` 是上游首内容/首可读文字；`generationMs` 是之后生成；`parseMs` / `citationsMs` 是解析和附件组装；`job_finish` 是最终持久化，含存储写入次数和累计耗时。`modelCalls` 应为 1（预设问题为 0）。
+- 开发者工具控制台的 `[chat timing]` 记录 `firstDisplayMs`、`totalDisplayMs`、`assetUrlMs`、`imageReadyMs`，用于区分后端生成与客户端网络、素材展示延迟。日志不记录密钥和问题正文。
+- 对象存储增量快照每秒最多写一次，不等待其完成再继续接收 token；最终结果等待持久化后交付。跨副本推送可能约延迟 1–2 秒。容器重启仍会影响正在生成的任务，未引入独立任务队列。
+
 ### chat-v5：媒体附件与回答展示
 
-当前验收版本为 `2026-10-20-chat-v5`。模型可按语义直接选择本轮目录中的图片、视频作为回答附件，无需额外读取或正文编号；仅有名称时不描述具体画面。回答不复述内部匹配规则，名称索引说明不再显示在聊天卡片中。需部署新版后端并重新编译、发布小程序，无需重新导入材料。
+历史版本为 `2026-10-20-chat-v5`。模型可按语义直接选择本轮目录中的图片、视频作为回答附件，无需额外读取或正文编号；仅有名称时不描述具体画面。回答不复述内部匹配规则，名称索引说明不再显示在聊天卡片中。需部署新版后端并重新编译、发布小程序，无需重新导入材料。
 
 ### chat-v4：等待体验和上下文优化
 
@@ -17,7 +29,7 @@
 - 小程序显示真实处理阶段和等待秒数，允许预先输入下一问题；可暂停等待、浏览资料库，恢复时继续获取同一任务。重进聊天也会恢复保存的任务，不重复触发模型。暂停仅停止客户端查询，后台任务仍继续。
 - 单次云托管请求仍为 12 秒；轮询网络错误、429 和 5xx 使用逐步退避重试，最多 8 次。总等待约 180 秒，超过后仍保留任务号供继续获取。
 - 模型默认总预算从 45 秒改为 90 秒，上限 120 秒。已有云端 `MODEL_TIMEOUT_MS=45000` 会继续覆盖默认值；希望容忍慢回答时显式改为 `MODEL_TIMEOUT_MS=90000`。这项只减少慢任务被中止，不代表生成本身加速。
-- 当前阶段提示不是逐字流式输出；尚未引入 WebSocket 或独立持久任务队列。容器重启仍可能使在途任务失败。
+- chat-v4 的阶段提示不是流式输出；chat-v6 已支持实时文字。独立持久任务队列仍未引入。
 
 生产容器直接读取云托管注入的 process.env，不读取 .env 文件。仅本地开发读取 backend/.env 作为后备，且同一配置的运行环境变量（包括别名）始终优先。
 
@@ -106,13 +118,13 @@ knowledge-agent/previews/文档ID/版本/页号.png
 
 每次改后端后，在项目根目录先执行 `powershell -NoProfile -ExecutionPolicy Bypass -File backend/scripts/package-cloud.ps1`，重新生成并校验 `backend/cloudrun-upload.zip`。旧 ZIP 不会随源码修改自动更新。打包只包含运行代码、Dockerfile 和依赖清单，不包含密钥、材料或本地索引。
 
-部署发布并分配流量后，在小程序请求 `/health`，确认 `runtimeVersion` 为 `2026-10-20-chat-v3`，且 `capabilities.materialTools`、`capabilities.conversation` 和 `capabilities.asyncChat` 为 true。没有这些字段说明流量还在旧后端；仅在本机重新编译小程序不会更新云托管。新版小程序会在顶部提示“云端仍为旧版，请部署新版后端”。
+部署发布并分配流量后，在小程序请求 `/health`，确认 `runtimeVersion` 为 `2026-10-20-chat-v6`，且 `capabilities.materialTools`、`capabilities.conversation` 和 `capabilities.asyncChat` 为 true。没有这些字段说明流量还在旧后端；仅在本机重新编译小程序不会更新云托管。新版小程序会在顶部提示“云端仍为旧版，请部署新版后端”。
 
 ### 问答超时修正（chat-v3）
 
-小程序云托管问答使用 `POST /chat/jobs` 创建任务并立即返回 202，再用 `GET /chat/jobs/:jobId` 获取状态和最终结果。每次网络请求设置 12 秒超时；模型生成可继续使用 MODEL_TIMEOUT_MS（默认 45 秒），前端最长等待约 100 秒。不要仅修改前端 timeout 来等待多轮模型调用。旧的同步 `/chat` 保留给本地或兼容客户端，小程序不再调用它。
+小程序通过 `POST /chat/jobs` 创建任务，使用 `/chat/jobs/:jobId/stream` WebSocket 接收实时文字；断线时 `GET /chat/jobs/:jobId` 获取同一任务的增量快照和最终结果。普通请求设置 12 秒超时，模型默认总预算 90 秒，轮询等待预算 180 秒。旧的同步 `/chat` 保留给兼容客户端。
 
-部署后端和重新编译小程序必须一起完成。后台日志新增 requestId、模型调用轮次、总 elapsedMs，便于区分多次请求；`citations=0` 只表示本轮未引用材料，不代表网络请求失败。
+部署后端和重新编译小程序必须一起完成。后台日志包含 requestId、modelCalls、分阶段耗时和总 elapsedMs，便于区分多次请求；`citations=0` 只表示本轮未引用材料，不代表网络请求失败。
 
 任务状态和回答写到私有 COS 的 `knowledge-agent/chat-jobs/`（使用自定义 COS_PREFIX 时随前缀变化），支持轮询落到其他实例。不会把问题和历史存入任务文件；回答和引用仍属于业务数据。服务现有 COS 凭据需有此子目录的 GetObject / PutObject 权限；不必扩大整个桶权限，也不要改公有读。对象接口有效期 15 分钟，物理文件可配置仅限 chat-jobs/ 前缀的一天生命周期回收。
 

@@ -25,6 +25,7 @@ function createConfig(env, fallback = {}) {
   const deployment = value('DEPLOYMENT_MODE') || 'local'
   const cloud = deployment === 'cloud'
   const apiKey = value('MODEL_API_KEY', 'API_KEY')
+  const model = value('MODEL_NAME', 'MODEL'), thinking = value('MODEL_ENABLE_THINKING')
   return {
     deployment,
     storage: value('STORAGE_MODE') || (cloud ? 'cos' : 'local'),
@@ -36,8 +37,8 @@ function createConfig(env, fallback = {}) {
     port: Number(value('PORT') || (cloud ? 8080 : 3000)),
     mode: value('MODEL_MODE') || (apiKey ? 'api' : 'mock'),
     apiUrl: value('MODEL_API_URL', 'API_URL'), apiKey,
-    model: value('MODEL_NAME', 'MODEL'),
-    enableThinking: value('MODEL_ENABLE_THINKING') === 'false' ? false : undefined,
+    model,
+    enableThinking: thinking === 'true' ? true : (thinking === 'false' || (!thinking && /^qwen/i.test(model)) ? false : undefined),
     timeout: Number(value('MODEL_TIMEOUT_MS') || 90000),
     materialsRoot: path.resolve(root, value('MATERIALS_ROOT') || 'materials'),
     dataRoot: path.resolve(root, value('DATA_ROOT') || 'data')

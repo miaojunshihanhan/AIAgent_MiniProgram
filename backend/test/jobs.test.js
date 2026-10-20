@@ -33,7 +33,7 @@ test('submit returns before model finishes; another replica polls result and pre
  let result
  for(let i=0;i<100;i++){result=await (await second(route)).json();if(result.status==='completed')break;await new Promise(resolve=>setTimeout(resolve,10))}
  assert.equal(result.status,'completed');assert.equal(result.result.answer,'模型生成结果');assert.equal(called,1)
- assert.equal(result.result.runtimeVersion,'2026-10-20-chat-v5')
+ assert.equal(result.result.runtimeVersion,'2026-10-20-chat-v6')
 })
 test('preset completes immediately and worker failures reach client without generic connection error',async t=>{
  const {serve}=await setup(t,async()=>{throw Object.assign(new Error('模型服务返回错误（HTTP 401）'),{status:502})})
@@ -50,6 +50,7 @@ test('job store surfaces write failure, bounds lifetime, and persists no questio
  const store=createJobStore(config,{saveChatJob:async job=>stored.set(job.id,JSON.parse(JSON.stringify(job))),loadChatJob:async id=>stored.get(id)})
  const job=await store.create('owner');assert.equal(stored.get(job.id).status,'running');assert.equal(stored.get(job.id).question,undefined)
  await store.progress(job,{stage:'reading',label:'正在读取相关材料'})
+ await tick() // Checkpoints are asynchronous so token delivery never waits for storage.
  const replica=createJobStore(config,{saveChatJob:async()=>{},loadChatJob:async id=>stored.get(id)})
  assert.equal((await replica.get(job.id,'owner')).progress.stage,'reading')
  stored.get(job.id).deadline=Date.now()-1;assert.equal((await replica.get(job.id,'owner')).status,'failed')

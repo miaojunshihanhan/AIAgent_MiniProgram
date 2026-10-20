@@ -15,7 +15,7 @@ test('model can attach relevant images and videos directly from catalog without 
  let calls=0
  const result=await generateAnswer('如何帮助宝宝排出吞入的空气？',evidence,config,async(url,options)=>{
   calls++;const body=JSON.parse(options.body),system=body.messages[0].content
-  assert.match(system,/不得复述到答案/);assert.match(system,/即使用户未明确索要也可主动附上/)
+  assert.match(system,/不复述内部匹配规则/);assert.match(system,/可主动附在下方/)
   const catalog=JSON.parse(body.messages.at(-1).content).materials.materials
   assert.equal(catalog[0].summary,'')
   return {ok:true,json:async()=>({choices:[{message:{content:output(['image','video','image'])}}]})}

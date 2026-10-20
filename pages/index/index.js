@@ -22,7 +22,7 @@ Page({
   refreshHealth() {
     this.setData({ status: '正在连接后端…' })
     api.health().then(res => this.setData({ ready: true, mode: res.modelMode, documentCount: res.documentCount,
-      status: (!res.capabilities || !res.capabilities.materialTools || !res.capabilities.conversation || !res.capabilities.asyncChat || !res.capabilities.chatProgress ? '云端仍为旧版，请部署新版后端' : (res.modelMode === 'mock' ? '本地摘录模式' : (res.modelConfigured ? '模型 API 模式' : '模型 API 待配置'))) + ' · ' + res.documentCount + ' 份材料' }))
+      status: (!res.capabilities || !res.capabilities.streaming || !res.capabilities.singleModelCall ? '云端仍为旧版，请部署新版后端' : (res.modelMode === 'mock' ? '本地摘录模式' : (res.modelConfigured ? '模型 API 模式 · 流式' : '模型 API 待配置'))) + ' · ' + res.documentCount + ' 份材料' }))
       .catch(err => this.setData({ ready: false, status: err.message }))
   },
   onInput(event) { this.setData({ input: event.detail.value }) },
@@ -56,23 +56,32 @@ Page({
     this.runAnswer(question, history, id)
   },
   stopTimer() { if (this._waitTimer) clearInterval(this._waitTimer); this._waitTimer = null },
+  showPartial(id,text) {
+    if(this._closed||this._paused||!text)return
+    const answerId=id+'-a',message=displayMessage({id:answerId,role:'assistant',content:text,citations:[],partial:true})
+    const messages=this.data.messages.filter(m=>m.id!==answerId).concat(message).slice(-30)
+    this.setData({messages,scrollInto:'message-'+answerId,waitingText:'正在输出回答…'})
+  },
   runAnswer(question, history, id, jobId) {
     this._paused = false
+    this._firstText = null
     this.setData({ sending: true, waitingText: jobId ? '正在恢复原回答…' : '正在提交问题…', error: '', elapsed: 0 })
     const started = Date.now(); this.stopTimer()
     this._waitTimer = setInterval(() => { if (!this._closed) this.setData({ elapsed: Math.floor((Date.now() - started) / 1000) }) }, 1000)
     api.chat(question, history, { jobId, isCancelled: () => this._closed || this._paused,
+      onText: text => {if(!this._firstText){this._firstText=Date.now();console.info('[chat timing] firstDisplayMs='+(this._firstText-started))}this.showPartial(id,text)},
       onJob: value => { this._pending = {jobId:value,question,id}; try { wx.setStorageSync(PENDING, this._pending) } catch (_) {} },
       onProgress: value => { if (!this._closed && value.progress) this.setData({ waitingText: value.progress.label || '正在等待模型回答…' }) }
     }).then(res => {
       if (this._closed) return
-      this.saveMessages(this.data.messages.concat({ id: id + '-a', role: 'assistant', content: res.answer, citations: res.citations, mode: res.mode }))
+      this.saveMessages(this.data.messages.filter(message=>message.id!==id+'-a').concat({ id: id + '-a', role: 'assistant', content: res.answer, citations: res.citations, mode: res.mode }))
+      console.info('[chat timing] totalDisplayMs='+(Date.now()-started),res.timings||{})
       this.refreshSources(id + '-a')
       this.clearPending()
     }).catch(err => {
       if (this._closed) return
       if (err.jobId && !err.terminal) this.setData({ error: err.message, pendingJob: true })
-      else { this.clearPending(); this.saveMessages(this.data.messages.filter(message => message.id !== id + '-q')); this.setData({ error: err.message, input: this.data.input || question }) }
+      else { this.clearPending(); this.saveMessages(this.data.messages.filter(message => message.id !== id + '-q'&&message.id!==id+'-a')); this.setData({ error: err.message, input: this.data.input || question }) }
     }).finally(() => { this.stopTimer(); if (!this._closed) this.setData({ sending: false }) })
   },
   clearPending() { this._pending = null; this.setData({ pendingJob: false }); try { if (wx.removeStorageSync) wx.removeStorageSync(PENDING) } catch (_) {} },
@@ -93,16 +102,18 @@ Page({
     })
   },
   loadSourceAsset(messageId, source) {
+    const assetStarted=Date.now()
     const update = patch => this.updateSource(messageId, source.chunkId, patch)
     const current = () => !this._closed && this.data.messages.some(message => message.id === messageId)
     update({ assetLoading: true, assetError: '', assetPath: '', assetUrl: '' })
     api.assetUrl(source.documentId, source.documentVersion, source.pageNumber || undefined).then(url => {
+      console.info('[chat timing] assetUrlMs='+(Date.now()-assetStarted),'kind='+source.kind)
       if (!current()) return
       if (source.kind === 'video') { update({ assetUrl: url, assetLoading: false }); return }
       wx.downloadFile({ url, timeout: 120000, success: result => {
         if (!current()) return
         if (result.statusCode !== 200 || !result.tempFilePath) { update({ assetLoading: false, assetError: '图片加载失败，可重试；原文已在下方展示。' }); return }
-        wx.getImageInfo({ src: result.tempFilePath, success: () => update({ assetPath: result.tempFilePath, assetLoading: false }),
+        wx.getImageInfo({ src: result.tempFilePath, success: () => {console.info('[chat timing] imageReadyMs='+(Date.now()-assetStarted));update({ assetPath: result.tempFilePath, assetLoading: false })},
           fail: () => update({ assetLoading: false, assetError: '图片解码失败，请重试。' }) })
       }, fail: () => update({ assetLoading: false, assetError: '图片下载失败，请检查网络后重试。' }) })
     }).catch(error => update({ assetLoading: false, assetError: error.message }))

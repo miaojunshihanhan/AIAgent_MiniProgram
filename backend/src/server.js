@@ -8,10 +8,12 @@ const { loadIndex: loadStoredIndex, retrieve } = require('./knowledge')
 const { generateAnswer } = require('./model')
 const {localReply}=require('./router')
 const {compactEvidence}=require('./search')
-const {normalizeHistory,withMediaNames,createMaterialTools}=require('./context')
+const {normalizeHistory,withMediaNames}=require('./context')
 const {createJobStore,ownerId}=require('./jobs')
+const {prepareMaterials}=require('./materials')
+const {attachChatSocket}=require('./socket')
 const loadIndex=async config=>withMediaNames(await loadStoredIndex(config))
-const runtimeVersion='2026-10-20-chat-v5'
+const runtimeVersion='2026-10-20-chat-v6'
 function fail(status, message) { return Object.assign(new Error(message), { status }) }
 function send(res, status, body) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' })
@@ -34,22 +36,31 @@ function publicDocument(doc) {
 function createServer(config = defaults, dependencies = {}) {
   const model = dependencies.generateAnswer || generateAnswer
   const jobs=createJobStore(config,dependencies)
-  async function answer(question,history,requestId,onProgress=async()=>{}){
+  async function answer(question,history,requestId,onProgress=async()=>{},onText=async()=>{}){
     const started=Date.now()
     console.log('[chat] started','requestId='+requestId)
     const local=localReply(question,Math.random,config.model)
     if(local)return {requestId,runtimeVersion,...local}
     await onProgress({stage:'materials',label:'正在加载材料目录'})
+    const indexStarted=Date.now()
     const index=await loadIndex(config)
-    const evidence=config.mode==='mock'?compactEvidence(retrieve(index,question,3),1800):[]
-    const materialTools=index.documents.length?createMaterialTools(index,evidence):undefined
-    const output=await model(question,evidence,config,undefined,{history,materialTools,requestId,onProgress})
+    const timings={indexMs:Date.now()-indexStarted}
+    const prepareStarted=Date.now()
+    const prepared=config.mode==='api'?prepareMaterials(index,question,history):{evidence:compactEvidence(retrieve(index,question,3),1800)}
+    const {evidence,materialTools}=prepared
+    timings.prepareMs=Date.now()-prepareStarted
+    console.log('[timing]','requestId='+requestId,'stage=materials',JSON.stringify({...timings,...prepared.stats}))
+    const output=await model(question,evidence,config,undefined,{history,materialTools,requestId,onProgress,onText})
+    Object.assign(timings,output.timings);const citationStarted=Date.now()
+    const citations=evidence.filter(e=>output.usedIds.includes(e.id)).map(e=>{
+      const doc=index.documents.find(d=>d.id===e.documentId),chunk=doc.chunks.find(c=>c.id===e.chunkId)
+      return {...e,quote:chunk.text,pageText:(doc.pages||[]).find(p=>p.number===e.pageNumber)?.text||''}
+    })
+    timings.citationsMs=Date.now()-citationStarted;timings.totalMs=Date.now()-started
+    console.log('[timing]','requestId='+requestId,'stage=chat_total',JSON.stringify(timings))
     console.log('[chat] completed','requestId='+requestId,'elapsedMs='+(Date.now()-started))
     return {requestId,runtimeVersion,answer:output.answer,mode:output.mode,modelInvoked:output.modelInvoked===true,
-      citations:evidence.filter(e=>output.usedIds.includes(e.id)).map(e=>{
-        const doc=index.documents.find(d=>d.id===e.documentId),chunk=doc.chunks.find(c=>c.id===e.chunkId)
-        return {...e,quote:chunk.text,pageText:(doc.pages||[]).find(p=>p.number===e.pageNumber)?.text||''}
-      }),retrievedCount:evidence.length,contextChars:evidence.reduce((n,e)=>n+e.quote.length,0)}
+      citations,timings,retrievedCount:evidence.length,contextChars:evidence.reduce((n,e)=>n+e.quote.length,0)}
   }
   let active = 0
   const server = http.createServer(async (req, res) => {
@@ -63,7 +74,7 @@ function createServer(config = defaults, dependencies = {}) {
       }
       if (req.method === 'GET' && url.pathname === '/health') {
         const index = await loadIndex(config)
-        return send(res, 200, { ok: true, runtimeVersion, capabilities:{conversation:true,materialTools:true,mediaNames:true,asyncChat:true,chatProgress:true}, modelMode: config.mode, modelConfigured: !!(config.apiKey && config.model && config.apiUrl && !config.apiUrl.includes('YOUR-PROVIDER')),
+        return send(res, 200, { ok: true, runtimeVersion, capabilities:{conversation:true,materialTools:true,mediaNames:true,asyncChat:true,chatProgress:true,streaming:true,singleModelCall:true,timings:true}, modelMode: config.mode, modelConfigured: !!(config.apiKey && config.model && config.apiUrl && !config.apiUrl.includes('YOUR-PROVIDER')),
           documentCount: index.documents.length, searchableCount: index.documents.filter(d => d.chunks.length).length, pendingTextCount: index.documents.filter(d => !d.chunks.length).length, importedAt: index.importedAt, developmentOnly: config.deployment !== 'cloud', storage: config.storage || 'local' })
       }
       const asset = url.pathname.match(/^\/documents\/([a-f0-9]{24})\/(?:original|pages\/(\d+)\/image)$/)
@@ -138,7 +149,7 @@ function createServer(config = defaults, dependencies = {}) {
           setImmediate(async()=>{
             try{
               let result,error
-              try{result=await answer(question,history,job.id,progress=>jobs.progress(job,progress))}catch(cause){error=cause;console.error('[chat] failed','requestId='+job.id,'elapsedMs='+(Date.now()-job.createdAt),cause.status||500)}
+              try{result=await answer(question,history,job.id,progress=>jobs.progress(job,progress),text=>jobs.partial(job,text))}catch(cause){error=cause;console.error('[chat] failed','requestId='+job.id,'elapsedMs='+(Date.now()-job.createdAt),cause.status||500)}
               await jobs.finish(job,result,error)
             }catch(error){console.error('[chat] persist failed','requestId='+job.id,error.message)}finally{active--}
           })
@@ -153,6 +164,7 @@ function createServer(config = defaults, dependencies = {}) {
       if (!error.status) console.error('[server]', error.message)
     }
   })
+  attachChatSocket(server,jobs,config)
   server.requestTimeout = 15000
   server.headersTimeout = 10000
   return server

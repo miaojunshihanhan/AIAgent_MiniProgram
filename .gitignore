@@ -5,6 +5,7 @@ backend/data/
 backend/materials/*
 !backend/materials/README.md
 node_modules/
+backend/cloudrun-upload.zip
 *.log
 
 # Local environment and credentials (keep sanitized examples)

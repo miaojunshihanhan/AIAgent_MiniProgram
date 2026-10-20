@@ -33,10 +33,26 @@ function createServer(config = defaults, dependencies = {}) {
   const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url, 'http://localhost')
+      if (req.method === 'GET' && url.pathname === '/ready') return send(res, 200, { ok: true })
+      if (config.deployment === 'cloud') {
+        if (!req.headers['x-wx-source'] || !req.headers['x-wx-openid']) throw fail(401, '请通过已关联的小程序调用此服务。')
+        if (req.method === 'GET' && url.pathname === '/whoami') return send(res, 200, { openid: req.headers['x-wx-openid'] })
+        if (!config.allowedOpenids || !config.allowedOpenids.length) throw fail(503, '请先在服务环境变量配置 ALLOWED_OPENIDS，再访问资料。')
+        if (!config.allowedOpenids.includes(req.headers['x-wx-openid'])) throw fail(403, '当前微信账号无权访问资料，请管理员将此账号 OpenID 加入 ALLOWED_OPENIDS。')
+      }
       if (req.method === 'GET' && url.pathname === '/health') {
         const index = await loadIndex(config)
         return send(res, 200, { ok: true, modelMode: config.mode, modelConfigured: !!(config.apiKey && config.model && config.apiUrl && !config.apiUrl.includes('YOUR-PROVIDER')),
-          documentCount: index.documents.length, searchableCount: index.documents.filter(d => d.chunks.length).length, pendingTextCount: index.documents.filter(d => !d.chunks.length).length, importedAt: index.importedAt, developmentOnly: true })
+          documentCount: index.documents.length, searchableCount: index.documents.filter(d => d.chunks.length).length, pendingTextCount: index.documents.filter(d => !d.chunks.length).length, importedAt: index.importedAt, developmentOnly: config.deployment !== 'cloud', storage: config.storage || 'local' })
+      }
+      const asset = url.pathname.match(/^\/documents\/([a-f0-9]{24})\/(?:original|pages\/(\d+)\/image)$/)
+      if (req.method === 'GET' && config.storage === 'cos' && asset) {
+        const index = await loadIndex(config), doc = index.documents.find(d => d.id === asset[1])
+        if (!doc) throw fail(404, '材料不存在或已移除。')
+        if (url.searchParams.get('version') !== doc.version) throw fail(409, '材料版本已更新，请刷新资料库。')
+        if (asset[2] && !(doc.pages || []).some(p => p.number === Number(asset[2]))) throw fail(404, '页面不存在。')
+        const relative = asset[2] ? 'previews/' + doc.id + '/' + doc.version + '/' + Number(asset[2]) + '.png' : 'originals/' + doc.original
+        return send(res, 200, await require('./storage').signedAsset(config, relative))
       }
       if (req.method === 'GET' && url.pathname === '/documents') {
         const index = await loadIndex(config)
@@ -44,7 +60,7 @@ function createServer(config = defaults, dependencies = {}) {
       }
       const pm=url.pathname.match(/^\/documents\/([a-f0-9]{24})\/pages\/(\d+)(\/image)?$/)
       if(req.method==='GET'&&pm){
-        const index=await loadIndex(config),doc=index.documents.find(d=>d.id===pm[1]);if(!doc)throw fail(404,'材料不存在');if(url.searchParams.get('version')!==doc.version)throw fail(409,'材料版本已更新');const page=(doc.pages||[]).find(p=>p.number===Number(pm[2]));if(!page)throw fail(404,'页面不存在');const filename=path.join(config.dataRoot,'previews',doc.id,doc.version,page.number+'.png');let hasImage=false;try{await fs.access(filename);hasImage=true}catch(_){};if(pm[3]){if(!hasImage)throw fail(404,'页图尚未生成');res.writeHead(200,{'Content-Type':'image/png'});return res.end(await fs.readFile(filename))};return send(res,200,{page:{...page,hasImage},pageCount:doc.pages.length})
+        const index=await loadIndex(config),doc=index.documents.find(d=>d.id===pm[1]);if(!doc)throw fail(404,'材料不存在');if(url.searchParams.get('version')!==doc.version)throw fail(409,'材料版本已更新');const page=(doc.pages||[]).find(p=>p.number===Number(pm[2]));if(!page)throw fail(404,'页面不存在');const filename=path.join(config.dataRoot,'previews',doc.id,doc.version,page.number+'.png');let hasImage=false;if(config.storage==='cos'){hasImage=page.hasImage===true}else{try{await fs.access(filename);hasImage=true}catch(_){}};if(pm[3]){if(!hasImage)throw fail(404,'页图尚未生成');res.writeHead(200,{'Content-Type':'image/png'});return res.end(await fs.readFile(filename))};return send(res,200,{page:{...page,hasImage},pageCount:doc.pages.length})
       }
       const match = url.pathname.match(/^\/documents\/([a-f0-9]{24})(?:\/(chunks|original)(?:\/([a-f0-9-]+))?)?$/)
       if (req.method === 'GET' && match) {
@@ -116,6 +132,6 @@ if (require.main === module) {
   }
   const server = createServer()
   server.on('error', error => { console.error('启动失败：', error.message); process.exitCode = 1 })
-  server.listen(defaults.port, defaults.host, () => console.log('Knowledge API: http://' + defaults.host + ':' + defaults.port + ' | mode=' + defaults.mode + ' | LOCAL DEVELOPMENT ONLY'))
+  server.listen(defaults.port, defaults.host, () => console.log('Knowledge API: http://' + defaults.host + ':' + defaults.port + ' | mode=' + defaults.mode + ' | deployment=' + defaults.deployment))
 }
 module.exports = { createServer }

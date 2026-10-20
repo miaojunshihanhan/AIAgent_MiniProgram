@@ -13,6 +13,13 @@ if (fs.existsSync(envFile)) {
   }
 }
 const config = {
+  deployment: process.env.DEPLOYMENT_MODE || 'local',
+  allowedOpenids: (process.env.ALLOWED_OPENIDS || '').split(',').map(s => s.trim()).filter(Boolean),
+  storage: process.env.STORAGE_MODE || 'local',
+  cosBucket: process.env.COS_BUCKET || '', cosRegion: process.env.COS_REGION || '',
+  cosPrefix: process.env.COS_PREFIX || 'knowledge-agent',
+  cosSecretId: process.env.COS_SECRET_ID || '', cosSecretKey: process.env.COS_SECRET_KEY || '',
+  cosToken: process.env.COS_SESSION_TOKEN || '',
   host: process.env.HOST || '127.0.0.1', port: Number(process.env.PORT || 3000),
   mode: process.env.MODEL_MODE || 'mock', apiUrl: process.env.MODEL_API_URL || '',
   apiKey: process.env.MODEL_API_KEY || '', model: process.env.MODEL_NAME || '',

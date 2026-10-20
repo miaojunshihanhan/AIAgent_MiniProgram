@@ -92,6 +92,7 @@ async function importMaterials(config) {
   return report
 }
 async function loadIndex(config) {
+  if (config.storage === 'cos') return require('./storage').loadCloudIndex(config)
   try { return JSON.parse(await fs.readFile(path.join(config.dataRoot, 'knowledge.json'), 'utf8')) }
   catch (error) { if (error.code === 'ENOENT') return { documents: [], importedAt: null }; throw error }
 }

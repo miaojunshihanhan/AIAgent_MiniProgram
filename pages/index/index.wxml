@@ -1,4 +1,4 @@
-<navigation-bar title="材料助手" back="{{false}}" color="#17233d" background="#f4f7fc"></navigation-bar>
+<navigation-bar title="广州华商学院 AI助学" back="{{false}}" color="#17233d" background="#f4f7fc"></navigation-bar>
 <view class="toolbar">
   <text class="eyebrow">KNOWLEDGE ASSISTANT</text>
   <view class="toolbar-actions"><button class="small-button" bindtap="openLibrary">资料库</button><button class="small-button muted-button" bindtap="clearChat" disabled="{{sending}}">清空</button></view>
@@ -8,7 +8,7 @@
   <view wx:if="{{!messages.length}}" class="welcome">
     <view class="welcome-icon">知</view><view class="welcome-title">让答案有据可查</view>
     <view class="welcome-text">围绕已导入的材料提问，回答下方可查看相关原文。</view>
-    <view class="hint-card"><text>开始使用</text><text>1. 将 Office / 文本 / 媒体放入材料目录</text><text>2. 执行导入并启动后端</text><text>3. 提问，点击来源卡片核对依据</text></view>
+    <view class="hint-card"><text>开始使用</text><text>请提问,模型会根据材料回答</text></view>
   </view>
   <view wx:for="{{messages}}" wx:key="id" id="message-{{item.id}}" class="message {{item.role}}">
     <text class="role-label">{{item.role === 'user' ? '我' : '材料助手'}}</text>

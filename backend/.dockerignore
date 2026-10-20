@@ -1,0 +1,9 @@
+node_modules
+.env
+.env.*
+data
+materials
+test
+examples
+*.zip
+.git

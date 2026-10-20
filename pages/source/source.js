@@ -16,6 +16,14 @@ Page({
     const originalUrl = api.originalUrl ? api.originalUrl(this.documentId, this.version) : ''
     this.setData({ document, shortVersion: document.version.slice(0, 12), originalUrl })
     if (document.kind === 'image' && originalUrl) this.loadPreview(originalUrl, false)
+    if (api.assetUrl) {
+      const version = this.version
+      api.assetUrl(this.documentId, version).then(url => {
+        if (this._closed || this.version !== version) return
+        this.setData({ originalUrl: url })
+        if (document.kind === 'image') this.loadPreview(url, false)
+      }).catch(error => { if (!this._closed && this.version === version) this.setData({ error: error.message }) })
+    }
   },
   loadPreview(url, slide) {
     const serial = this._previewSerial = (this._previewSerial || 0) + 1
@@ -57,8 +65,15 @@ Page({
     this.setData({ [slide ? 'slideImage' : 'imagePath']: '', [slide ? 'slideImageLoading' : 'imageLoading']: false,
       [slide ? 'slideImageError' : 'imageError']: '设备未能显示图片：' + ((event.detail || {}).errMsg || '图片渲染失败') + '，请点击重试。' })
   },
-  retryImage() { if (this.data.originalUrl) this.loadPreview(this.data.originalUrl, false) },
-  retrySlideImage() { if (this._slideImageUrl) this.loadPreview(this._slideImageUrl, true); else if (this.data.slide) this.loadSlide(this.data.slide.number) },
+  retryImage() {
+    if (api.assetUrl) {
+      api.assetUrl(this.documentId, this.version).then(url => {
+        if (this._closed) return
+        this.setData({ originalUrl: url }); this.loadPreview(url, false)
+      }).catch(error => { if (!this._closed) this.setData({ imageError: error.message }) })
+    } else if (this.data.originalUrl) this.loadPreview(this.data.originalUrl, false)
+  },
+  retrySlideImage() { if (api.assetUrl && this.data.slide) this.loadSlide(this.data.slide.number); else if (this._slideImageUrl) this.loadPreview(this._slideImageUrl, true); else if (this.data.slide) this.loadSlide(this.data.slide.number) },
   previewSlideImage() { if (this.data.slideImage) wx.previewImage({ urls: [this.data.slideImage], current: this.data.slideImage }) },
   loadSlide(number) {
     if (!api.page) return
@@ -71,6 +86,13 @@ Page({
       if (this._closed || serial !== this._slideSerial) return
       this.setData({ slide: res.page, slideCount: res.pageCount, slideLoading: false })
       if (res.page.hasImage) {
+        if (api.assetUrl) {
+          api.assetUrl(this.documentId, this.version, number).then(url => {
+            if (this._closed || serial !== this._slideSerial) return
+            this._slideImageUrl = url; this.loadPreview(url, true)
+          }).catch(error => { if (!this._closed && serial === this._slideSerial) this.setData({ slideImageError: error.message, slideImageLoading: false }) })
+          return
+        }
         this._slideImageUrl = api.pageImageUrl(this.documentId, this.version, number)
         this.loadPreview(this._slideImageUrl, true)
       }
@@ -102,7 +124,8 @@ Page({
   downloadVideo() {
     if (this.data.downloading) return
     this.setData({ downloading: true, videoProgress: 0, videoError: '' })
-    const task = wx.downloadFile({ url: api.originalUrl(this.documentId, this.version), timeout: 120000,
+    const download = url => {
+    const task = wx.downloadFile({ url, timeout: 120000,
       success: res => {
         if (res.statusCode !== 200) { this.setData({ videoError: '视频下载失败：HTTP ' + res.statusCode }); return }
         this.setData({ originalUrl: res.tempFilePath })
@@ -111,17 +134,24 @@ Page({
       complete: () => this.setData({ downloading: false })
     })
     if (task && task.onProgressUpdate) task.onProgressUpdate(progress => this.setData({ videoProgress: progress.progress }))
+    }
+    if (api.assetUrl) api.assetUrl(this.documentId, this.version).then(url => { if (!this._closed) download(url) })
+      .catch(error => { if (!this._closed) this.setData({ downloading: false, videoError: error.message }) })
+    else download(api.originalUrl(this.documentId, this.version))
   },
   previewImage() { if (this.data.imagePath) wx.previewImage({ urls: [this.data.imagePath], current: this.data.imagePath }) },
   openOriginal() {
     if (this.data.opening || !this.data.originalUrl) return
     this.setData({ opening: true, error: '' })
-    wx.downloadFile({ url: this.data.originalUrl, timeout: 120000, success: res => {
+    const download = url => wx.downloadFile({ url, timeout: 120000, success: res => {
       if (res.statusCode !== 200) { this.setData({ opening: false, error: '原件下载失败，请刷新资料库后重试。' }); return }
       wx.openDocument({ filePath: res.tempFilePath, fileType: this.data.document.format, showMenu: true,
         fail: () => this.setData({ error: '此设备无法打开该原件，可先查看下方提取文本；较大文件请在电脑端查看。' }),
         complete: () => { this.setData({ opening: false }) } })
     }, fail: () => this.setData({ opening: false, error: '下载原件失败，请检查网络；大文件建议在电脑查看。' }) })
+    if (api.assetUrl) api.assetUrl(this.documentId, this.version).then(url => { if (!this._closed) download(url) })
+      .catch(error => { if (!this._closed) this.setData({ opening: false, error: error.message }) })
+    else download(this.data.originalUrl)
   },
   loadMore() {
     if (this.data.loading || this.data.nextOffset === null) return

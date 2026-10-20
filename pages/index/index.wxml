@@ -1,0 +1,28 @@
+<navigation-bar title="材料助手" back="{{false}}" color="#17233d" background="#f4f7fc"></navigation-bar>
+<view class="toolbar">
+  <text class="eyebrow">KNOWLEDGE ASSISTANT</text>
+  <view class="toolbar-actions"><button class="small-button" bindtap="openLibrary">资料库</button><button class="small-button muted-button" bindtap="clearChat" disabled="{{sending}}">清空</button></view>
+</view>
+<view class="status" bindtap="refreshHealth"><view class="status-dot {{ready ? 'online' : ''}}"></view><text>{{status}}</text></view>
+<scroll-view class="chat-scroll" scroll-y type="list" scroll-into-view="{{scrollInto}}" scroll-with-animation>
+  <view wx:if="{{!messages.length}}" class="welcome">
+    <view class="welcome-icon">知</view><view class="welcome-title">让答案有据可查</view>
+    <view class="welcome-text">围绕已导入的材料提问，回答下方可查看相关原文。</view>
+    <view class="hint-card"><text>开始使用</text><text>1. 将 Office / 文本 / 媒体放入材料目录</text><text>2. 执行导入并启动后端</text><text>3. 提问，点击来源卡片核对依据</text></view>
+  </view>
+  <view wx:for="{{messages}}" wx:key="id" id="message-{{item.id}}" class="message {{item.role}}">
+    <text class="role-label">{{item.role === 'user' ? '我' : '材料助手'}}</text>
+    <view class="bubble"><view wx:for="{{item.lines}}" wx:for-item="line" wx:for-index="lineIndex" wx:key="lineIndex" class="message-line"><text class="message-text" selectable>{{line}}</text></view></view>
+    <view wx:if="{{item.citations.length}}" class="sources"><text class="sources-label">参考原材料 · 点击查看</text>
+      <view wx:for="{{item.citations}}" wx:for-item="source" wx:key="chunkId" class="source-card" data-source="{{source}}" bindtap="openSource">
+        <view class="source-title">[{{source.id}}] {{source.title}}</view><view class="source-location">{{source.location}}</view><view class="source-quote">{{source.quote}}</view><view class="source-link">查看证据与全文 →</view>
+      </view>
+    </view>
+  </view>
+  <view wx:if="{{sending}}" class="thinking">正在检索材料并组织回答…</view>
+  <view class="scroll-bottom"></view>
+</scroll-view>
+<view class="composer"><view wx:if="{{error}}" class="error-banner">{{error}}</view>
+  <view class="input-row"><textarea class="question-input" value="{{input}}" bindinput="onInput" placeholder="输入与材料有关的问题…" maxlength="20000" auto-height disabled="{{sending}}" show-confirm-bar="{{false}}"/><button class="send-button" bindtap="send" loading="{{sending}}" disabled="{{sending || !input}}">发送</button></view>
+  <view class="composer-note">单轮材料问答 · 记录仅存本机 · 关键结论请核对原文</view>
+</view>

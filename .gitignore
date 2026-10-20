@@ -1,0 +1,27 @@
+backend/.env
+backend/.env.*
+!backend/.env.example
+backend/data/
+backend/materials/*
+!backend/materials/README.md
+node_modules/
+*.log
+
+# Local environment and credentials (keep sanitized examples)
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Machine-specific WeChat and backend address configuration
+/project.config.json
+/project.private.config.json
+/config/api.js
+/.cloudbase/container/debug.json
+
+# OS metadata
+.DS_Store
+Thumbs.db

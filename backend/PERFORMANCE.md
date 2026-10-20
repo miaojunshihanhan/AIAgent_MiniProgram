@@ -29,7 +29,7 @@
 
 ## 部署后验证
 
-确认 `/health` 为 `2026-10-20-chat-v6` 且 `streaming`、`singleModelCall`、`timings` 为 true。按同一 `requestId` 查看 `[timing]` 日志；每次普通提问应有一条 `[model] requesting`，其中 `calls=1 stream=true`。预设问题不调用模型。
+确认 `/health` 为 `2026-10-20-chat-v7` 且 `streaming`、`singleModelCall`、`timings` 为 true。按同一 `requestId` 查看 `[timing]` 日志；每次普通提问应有一条 `[model] requesting`，其中 `calls=1 stream=true`。预设问题不调用模型。
 
 小程序开发者工具查看 `[chat timing]` 的 `firstDisplayMs`、`totalDisplayMs`、`assetUrlMs`、`imageReadyMs`。若后端首字快、前端慢，比较云 WebSocket 是否正常，还是已回退快照；若 `job_create`/`job_finish` 慢，排查 COS 网络与权限；若 `firstTokenMs` 或 `generationMs` 慢，排查模型提供商排队、思考配置与输出长度。
 

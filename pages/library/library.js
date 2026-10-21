@@ -1,7 +1,11 @@
 const api = require('../../services/api')
+const access = require('../../services/access')
 Page({
   data: { documents: [], loading: true, error: '' },
-  onLoad() { this.load() },
+  onLoad() { this.checkAccess() },
+  onShow() { if (this._hasShown) this.checkAccess(); this._hasShown = true },
+  onUnload() { this._accessClosed = true },
+  checkAccess() { return access.check(this, api, false, () => this.load()) },
   load() {
     this.setData({ loading: true, error: '' })
     api.documents().then(res => this.setData({ documents: res.documents.map(doc => Object.assign({}, doc, { shortVersion: doc.version.slice(0, 12) })) }))

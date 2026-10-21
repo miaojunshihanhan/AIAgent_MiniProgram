@@ -45,6 +45,8 @@ chat-v6 引入单次模型调用与实时流式，当前 chat-v8 保留这些能
 
 生产容器直接读取云托管注入的 process.env，不读取 .env 文件。仅本地开发读取 backend/.env 作为后备，且同一配置的运行环境变量（包括别名）始终优先。
 
+- `UPLOAD_CHECK=true`：所有用户进入产品介绍与学习指南，后端同时停止提供问答、任务、流式订阅及资料接口；`UPLOAD_CHECK=false`（默认）：正常页面与服务。修改后部署或重启所有副本使配置生效，首次使用需同时发布新版小程序。通过小程序云托管调用 `GET /public-config` 验证 `uploadCheck` 布尔值；配置接口不会读取 COS 索引。页面重新进入或返回时重新获取，前台静止页面不会主动收到切换通知。既有 COS 签名链接在原有效期内仍可用。
+
 - 模型地址：MODEL_API_URL（也支持 API_URL）。
 - 模型密钥：MODEL_API_KEY（也支持 API_KEY）。
 - 模型名称：MODEL_NAME（也支持 MODEL）。

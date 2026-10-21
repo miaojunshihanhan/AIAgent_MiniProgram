@@ -72,6 +72,15 @@ function createServer(config = defaults, dependencies = {}) {
         if (req.method === 'GET' && url.pathname === '/whoami') return send(res, 200, { openid: req.headers['x-wx-openid'] })
         // All mini program users can access the shared library; no per-user allowlist.
       }
+      if (req.method === 'GET' && url.pathname === '/public-config') {
+        return send(res, 200, { uploadCheck: config.uploadCheck === true })
+      }
+      if (config.uploadCheck === true && /^\/(chat|documents)(\/|$)/.test(url.pathname)) {
+        return send(res, 503, { error: '当前仅开放产品介绍与学习指南。', uploadCheck: true })
+      }
+      if (req.method === 'GET' && url.pathname === '/health' && config.uploadCheck === true) {
+        return send(res, 200, { ok: true, runtimeVersion, uploadCheck: true })
+      }
       if (req.method === 'GET' && url.pathname === '/health') {
         const index = await loadIndex(config)
         return send(res, 200, { ok: true, runtimeVersion, capabilities:{conversation:true,materialTools:true,mediaNames:true,asyncChat:true,chatProgress:true,streaming:true,singleModelCall:true,timings:true}, modelMode: config.mode, modelConfigured: !!(config.apiKey && config.model && config.apiUrl && !config.apiUrl.includes('YOUR-PROVIDER')),

@@ -2,6 +2,14 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { createConfig } = require('../src/config')
+
+test('UPLOAD_CHECK is a boolean and runtime false overrides local true', () => {
+  assert.equal(createConfig({ UPLOAD_CHECK: 'true' }).uploadCheck, true)
+  assert.equal(createConfig({ UPLOAD_CHECK: ' TRUE ' }).uploadCheck, true)
+  assert.equal(createConfig({ UPLOAD_CHECK: 'false' }, { UPLOAD_CHECK: 'true' }).uploadCheck, false)
+  assert.equal(createConfig({}, { UPLOAD_CHECK: 'true' }).uploadCheck, true)
+  assert.equal(createConfig({}).uploadCheck, false)
+})
 test('cloud runtime reads model and COS environment variables directly', () => {
   const config = createConfig({ DEPLOYMENT_MODE: 'cloud', MODEL_API_URL: 'https://model.example/v1', MODEL_API_KEY: 'test-key', MODEL_NAME: 'test-model', COS_BUCKET: 'test-123', COS_REGION: 'ap-shanghai', COS_SECRET_ID: 'test-id', COS_SECRET_KEY: 'test-secret', ALLOWED_OPENIDS: 'member, colleague' })
   assert.equal(config.apiUrl, 'https://model.example/v1'); assert.equal(config.apiKey, 'test-key')

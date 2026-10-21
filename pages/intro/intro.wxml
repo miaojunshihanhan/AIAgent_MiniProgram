@@ -1,0 +1,29 @@
+<navigation-bar title="{{name}}" back="{{false}}" color="#17233d" background="#f4f7fc" />
+<view wx:if="{{!accessReady}}" class="access-state">
+  <text>{{accessError || '正在加载页面…'}}</text>
+  <button wx:if="{{accessError}}" class="secondary-button" bindtap="checkAccess">重新加载</button>
+</view>
+<scroll-view wx:if="{{accessReady}}" class="intro-scroll" scroll-y>
+  <view class="intro-body">
+    <view class="hero">
+      <text class="hero-label">LEARNING &amp; ORGANIZATION</text>
+      <view class="hero-title">{{tagline}}</view>
+      <view class="hero-description">{{description}}</view>
+      <button class="hero-button" data-section="about" bindtap="openInformation">了解{{name}} →</button>
+      <view class="hero-mark">知</view>
+    </view>
+    <view class="section-heading"><view class="section-title">从这里开始</view><text class="section-note">把方法变成习惯</text></view>
+    <view class="quick-grid">
+      <button class="quick-card" data-section="checklist" bindtap="openInformation"><view class="quick-icon">✓</view><view class="quick-title">学习清单</view><view class="quick-caption">记录整理进度</view></button>
+      <button class="quick-card" data-section="faq" bindtap="openInformation"><view class="quick-icon">?</view><view class="quick-title">常见问题</view><view class="quick-caption">找到使用解答</view></button>
+    </view>
+    <view class="section-heading"><view class="section-title">学习资料指南</view><text class="section-note">{{results.length}} 个主题</text></view>
+    <input class="search-input" placeholder="搜索分类、阅读、笔记…" value="{{keyword}}" maxlength="60" bindinput="onSearch" confirm-type="search" />
+    <button wx:for="{{results}}" wx:key="id" class="topic-card" data-id="{{item.id}}" bindtap="openTopic">
+      <view class="topic-number">{{item.number}}</view><view class="topic-title">{{item.title}}</view><view class="topic-summary">{{item.summary}}</view><view class="topic-link">阅读指南 →</view>
+    </button>
+    <view wx:if="{{!results.length}}" class="notice">未找到相关主题，试试“笔记”或“阅读”。</view>
+    <button class="contact-entry" data-section="contact" bindtap="openInformation"><text>关于与联系</text><text>查看服务说明 →</text></button>
+    <view class="intro-footer">{{name}} · 让每一份资料都井井有条</view>
+  </view>
+</scroll-view>

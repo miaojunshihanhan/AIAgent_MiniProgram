@@ -1,3 +1,5 @@
+<view wx:if="{{!accessReady}}" class="access-state"><text>{{accessError || '正在加载页面…'}}</text><button wx:if="{{accessError}}" class="secondary-button" bindtap="checkAccess">重新加载</button></view>
+<block wx:if="{{accessReady}}">
 <navigation-bar title="原材料" back color="#17233d" background="#f4f7fc"></navigation-bar>
 <scroll-view class="page-scroll" scroll-y><view class="page-body">
   <view wx:if="{{document}}" class="source-heading"><view class="page-title">{{document.title}}</view><view class="page-description">材料版本 {{shortVersion}} · {{document.lineCount}} 行</view></view>
@@ -29,3 +31,4 @@
   <button wx:if="{{fullLoaded && nextOffset !== null}}" class="secondary-button" bindtap="loadMore" loading="{{loading}}" disabled="{{loading}}">加载后续原文</button>
   <view wx:if="{{loading}}" class="notice">正在加载…</view><view wx:if="{{fullLoaded && nextOffset === null}}" class="notice">已到原文末尾</view>
 </view></scroll-view>
+</block>

@@ -1,3 +1,5 @@
+<view wx:if="{{!accessReady}}" class="access-state"><text>{{accessError || '正在加载页面…'}}</text><button wx:if="{{accessError}}" class="secondary-button" bindtap="checkAccess">重新加载</button></view>
+<block wx:if="{{accessReady}}">
 <navigation-bar title="资料库" back color="#17233d" background="#f4f7fc"></navigation-bar>
 <scroll-view class="page-scroll" scroll-y type="list"><view class="page-body">
   <view class="page-title">可查阅的材料</view><view class="page-description">共 {{documents.length}} 份 · Office 文档 / 文本 / 图片 / 视频</view>
@@ -7,3 +9,4 @@
   <view wx:for="{{documents}}" wx:key="id" class="panel document-card" data-document="{{item}}" bindtap="openDocument"><view class="document-type">{{item.format}}</view><view class="document-name">{{item.title}}</view><view class="document-meta">{{item.status === 'name_only' ? '可按名称匹配 · 未识别媒体内容' : (item.status === 'needs_text' ? '待识别文字 · 可查看原文件' : '可检索')}} · {{item.chunkCount}} 个片段</view><view class="document-version">版本 {{item.shortVersion}}</view><view class="document-link">查看原材料 →</view></view>
   <button class="secondary-button" bindtap="load" loading="{{loading}}">刷新材料列表</button>
 </view></scroll-view>
+</block>

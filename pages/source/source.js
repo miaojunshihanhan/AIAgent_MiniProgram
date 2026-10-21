@@ -1,12 +1,24 @@
 const api = require('../../services/api')
+const access = require('../../services/access')
 Page({
   data: { document: null, chunk: null, lines: [], nextOffset: null, loading: true, error: '', fullLoaded: false, shortVersion: '', originalUrl: '', opening: false, videoError: '', downloading: false, videoProgress: 0, slide: null, slideCount: 0, slideImage: '', imagePath: '', imageHeight: 420, slideImageHeight: 360, imageLoading: false, imageError: '', slideLoading: false, slideImageLoading: false, slideImageError: '' },
   onLoad(options) {
+    this._sourceOptions = options
+    this.checkAccess()
+  },
+  checkAccess() {
+    return access.check(this, api, false, () => {
+      if (!this._initialized) { this._initialized = true; this.initialize(this._sourceOptions || {}) }
+    })
+  },
+  onShow() { if (this._hasShown) this.checkAccess(); this._hasShown = true },
+  initialize(options) {
     this._previewCache = {}; this._previewSerial = 0; this._slideSerial = 0; this._closed = false
     this.documentId = options.id || ''; this.version = options.version || ''; this.chunkId = options.chunk || ''
     this.load()
   },
   onUnload() {
+    this._accessClosed = true
     this._closed = true; this._previewSerial++; this._slideSerial++
     if (this._imageTask && this._imageTask.abort) this._imageTask.abort()
   },

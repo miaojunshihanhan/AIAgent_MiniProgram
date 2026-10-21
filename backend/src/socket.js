@@ -4,6 +4,7 @@ const {ownerId}=require('./jobs')
 function attachChatSocket(server,jobs,config){
  const wss=new WebSocketServer({noServer:true,maxPayload:1024,perMessageDeflate:false})
  server.on('upgrade',(req,socket,head)=>{
+  if(config.uploadCheck===true){socket.end('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n');return}
   let url;try{url=new URL(req.url,'http://localhost')}catch{socket.destroy();return}
   const id=/^\/chat\/jobs\/([a-f0-9-]{36})\/stream$/.exec(url.pathname)?.[1]
   if(!id||(config.deployment==='cloud'&&(!req.headers['x-wx-source']||!req.headers['x-wx-openid']))){socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');return}

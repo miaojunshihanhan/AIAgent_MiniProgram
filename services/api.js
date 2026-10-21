@@ -6,8 +6,16 @@ function request(path, options) {
       method: options.method || 'GET', data: options.data, timeout: config.mode === 'container' ? 12000 : (config.timeout || 60000),
       header: { 'content-type': 'application/json' },
       success(res) {
+        if (res.data && res.data.uploadCheck === true && path !== '/public-config') {
+          wx.reLaunch({ url: '/pages/intro/intro' })
+        }
         if (res.statusCode >= 200 && res.statusCode < 300) resolve(res.data)
-        else { const error = new Error((res.data && res.data.error) || ('请求失败：HTTP ' + res.statusCode)); error.status = res.statusCode; reject(error) }
+        else {
+          const message = path === '/public-config' && res.statusCode === 404
+            ? '后端缺少配置接口 /public-config，请部署最新后端代码并将流量切换至新版本，再重试。仅修改 UPLOAD_CHECK 环境变量不会更新接口。'
+            : (res.data && res.data.error) || ('请求失败：HTTP ' + res.statusCode)
+          const error = new Error(message); error.status = res.statusCode; reject(error)
+        }
       },
       fail(error) {
         const detail = error.errMsg || ''
@@ -113,6 +121,7 @@ async function chat(question, history, options) {
   const error = new Error('暂时未收到最终结果，可点击继续获取，无需重新提问。任务号：' + started.jobId); error.jobId = started.jobId; throw error
 }
 module.exports = {
+  publicConfig: () => request('/public-config'),
   originalUrl: (id, version) => config.mode === 'container' ? '' : config.baseUrl.replace(/\/$/, '') + assetPath(id, version),
   pageImageUrl: (id, version, n) => config.mode === 'container' ? '' : config.baseUrl.replace(/\/$/, '') + assetPath(id, version, n),
   assetUrl,

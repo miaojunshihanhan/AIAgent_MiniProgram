@@ -1,5 +1,7 @@
 {
   "pages": [
+    "pages/intro/intro",
+    "pages/information/information",
     "pages/index/index",
     "pages/library/library",
     "pages/source/source"

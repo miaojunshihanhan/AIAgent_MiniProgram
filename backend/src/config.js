@@ -27,6 +27,7 @@ function createConfig(env, fallback = {}) {
   const apiKey = value('MODEL_API_KEY', 'API_KEY')
   const model = value('MODEL_NAME', 'MODEL'), thinking = value('MODEL_ENABLE_THINKING')
   return {
+    uploadCheck: value('UPLOAD_CHECK').toLowerCase() === 'true',
     deployment,
     storage: value('STORAGE_MODE') || (cloud ? 'cos' : 'local'),
     cosBucket: value('COS_BUCKET'), cosRegion: value('COS_REGION'),

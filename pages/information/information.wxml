@@ -1,0 +1,43 @@
+<navigation-bar title="{{title}}" back color="#17233d" background="#f4f7fc" />
+<view wx:if="{{!accessReady}}" class="access-state"><text>{{accessError || '正在加载页面…'}}</text><button wx:if="{{accessError}}" class="secondary-button" bindtap="checkAccess">重新加载</button></view>
+<scroll-view wx:if="{{accessReady}}" class="information-scroll" scroll-y>
+  <view class="page-body">
+    <view class="page-title">{{section === 'topic' ? topic.title : title}}</view>
+    <block wx:if="{{section === 'about'}}">
+      <view class="page-description">{{name}} · 学习资料整理指南</view>
+      <view class="panel"><view class="content-title">让学习资料更有条理</view><view class="paragraph">{{description}}</view><view class="paragraph">从分类、阅读到复习，用简单的方法完成日常整理。每篇指南都可以独立阅读，学习清单帮助你把方法落实到行动。</view></view>
+      <view class="panel content-panel"><view class="content-title">你可以在这里</view><view class="paragraph">01　阅读资料分类、阅读笔记与复习指南</view><view class="paragraph">02　搜索感兴趣的学习主题</view><view class="paragraph">03　勾选清单，在当前设备保存整理进度</view><view class="paragraph">04　查阅常见问题与服务说明</view></view>
+      <button class="primary-button" bindtap="openChecklist">开始我的学习清单</button>
+    </block>
+    <block wx:if="{{section === 'topic'}}">
+      <view class="page-description">{{topic.summary}}</view>
+      <view class="panel"><view wx:for="{{topic.paragraphs}}" wx:key="*this" class="reading-section"><view class="step-label">步骤 {{index + 1}}</view><text class="paragraph" selectable>{{item}}</text></view></view>
+      <button class="primary-button" bindtap="openChecklist">将方法付诸行动</button>
+    </block>
+    <block wx:if="{{section === 'checklist'}}">
+      <view class="page-description">每天一点整理，让资料随时可用。进度仅保存在当前设备。</view>
+      <view class="panel"><view class="progress-heading"><text>已完成 {{completed}} / {{checklist.length}} 项</text><text>{{progress}}%</text></view><progress percent="{{progress}}" stroke-width="8" activeColor="#39826e" backgroundColor="#e8eef0" border-radius="8" /><view wx:if="{{completed === checklist.length}}" class="completed-note">本轮整理已完成，记得按计划复习。</view></view>
+      <checkbox-group class="panel content-panel" bindchange="onChecklistChange"><label wx:for="{{checklist}}" wx:key="id" class="check-row"><checkbox value="{{item.id}}" checked="{{item.checked}}" color="#39826e"/><text>{{item.title}}</text></label></checkbox-group>
+      <view wx:if="{{storageError}}" class="error-box">{{storageError}}</view>
+      <button class="secondary-button" bindtap="resetChecklist">重置清单</button>
+    </block>
+    <block wx:if="{{section === 'faq'}}">
+      <view class="page-description">点击问题查看解答。</view>
+      <view wx:for="{{faqs}}" wx:key="id" class="panel faq-card"><button class="faq-question" data-id="{{item.id}}" bindtap="toggleQuestion"><text>{{item.question}}</text><text>{{expanded === item.id ? '−' : '+'}}</text></button><view wx:if="{{expanded === item.id}}" class="paragraph faq-answer">{{item.answer}}</view></view>
+    </block>
+    <block wx:if="{{section === 'contact'}}">
+      <view class="page-description">{{name}} · 服务与隐私说明</view>
+      <view class="panel"><view class="content-title">关于这份指南</view><view class="paragraph">本页面提供通用的学习资料整理方法。请根据自己的课程安排和学习习惯使用，重要内容以原始资料为准。</view><view class="content-title spaced-title">本地数据与隐私</view><view class="paragraph">浏览指南无需提供个人资料。学习清单保存在当前设备，可在清单页重置；清除小程序数据也会清除记录。页面会联网读取当前服务状态。</view></view>
+      <view class="panel content-panel">
+        <view class="content-title">联系我们</view>
+        <view wx:if="{{!contact.phone && !contact.email && !contact.address}}" class="paragraph">暂未公布联系方式。</view>
+        <view wx:if="{{contact.phone}}" class="paragraph">电话：{{contact.phone}}</view>
+        <button wx:if="{{contact.phone}}" class="secondary-button" bindtap="callPhone">拨打联系电话</button>
+        <view wx:if="{{contact.email}}" class="paragraph">邮箱：{{contact.email}}</view>
+        <view wx:if="{{contact.address}}" class="paragraph">地址：{{contact.address}}</view>
+        <button wx:if="{{hasLocation}}" class="secondary-button" bindtap="openLocation">在地图中查看</button>
+      </view>
+    </block>
+    <button class="home-button" bindtap="goHome">返回介绍首页</button>
+  </view>
+</scroll-view>

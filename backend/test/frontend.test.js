@@ -7,7 +7,7 @@ const vm = require('node:vm')
 const root = path.resolve(__dirname, '../..')
 function page(relative, api, wx = {}) {
   let definition
-  vm.runInNewContext(fs.readFileSync(path.join(root, relative), 'utf8'), { require: () => api, Page: value => {definition = value}, wx, Date, encodeURIComponent, setInterval:()=>1, clearInterval:()=>{} })
+  vm.runInNewContext(fs.readFileSync(path.join(root, relative), 'utf8'), { require: name => name.endsWith('/access') ? { check: (page, service, introduction, ready) => { page.setData({ accessReady: true }); if (ready) ready() } } : api, Page: value => {definition = value}, wx, Date, encodeURIComponent, setInterval:()=>1, clearInterval:()=>{} })
   definition.data = JSON.parse(JSON.stringify(definition.data))
   definition.setData = values => Object.assign(definition.data, values)
   return definition

@@ -5,14 +5,74 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 const root = path.resolve(__dirname, '../..')
+const sharing = require('../../services/share')
+const sharePages = [
+  ['pages/index/index', 'chat'],
+  ['pages/intro/intro', 'introduction'],
+  ['pages/library/library', 'library'],
+  ['pages/information/information', 'information'],
+  ['pages/source/source', 'document']
+]
 function page(relative, api, wx = {}) {
   let definition
-  vm.runInNewContext(fs.readFileSync(path.join(root, relative), 'utf8'), { require: name => name.endsWith('/access') ? { check: (page, service, introduction, ready) => { page.setData({ accessReady: true }); if (ready) ready() } } : api, Page: value => {definition = value}, wx, Date, encodeURIComponent, setInterval:()=>1, clearInterval:()=>{} })
+  vm.runInNewContext(fs.readFileSync(path.join(root, relative), 'utf8'), { require: name => name.endsWith('/access') ? { check: (page, service, introduction, ready) => { page.setData({ accessReady: true }); if (ready) ready() } } : (name.endsWith('/share') ? sharing : api), Page: value => {definition = value}, wx, Date, encodeURIComponent, setInterval:()=>1, clearInterval:()=>{} })
   definition.data = JSON.parse(JSON.stringify(definition.data))
   definition.setData = values => Object.assign(definition.data, values)
   return definition
 }
 const tick = () => new Promise(resolve => setImmediate(resolve))
+test('all shareable pages enable timeline sharing and define both share callbacks', () => {
+  for (const [route, key] of sharePages) {
+    const options = JSON.parse(fs.readFileSync(path.join(root, route + '.json'), 'utf8'))
+    const source = fs.readFileSync(path.join(root, route + '.js'), 'utf8')
+    assert.equal(options.enableShareTimeline, true, route + ' must enable timeline sharing')
+    assert.ok(source.includes("onShareAppMessage() { return share.build('" + key + "', this, false)"), route + ' must define friend sharing')
+    assert.ok(source.includes("onShareTimeline() { return share.build('" + key + "', this, true)"), route + ' must define timeline sharing')
+  }
+})
+test('configured share covers are local package files', () => {
+  const config = require('../../config/share')
+  const groups = [config.defaults, ...Object.values(config.pages), ...Object.values(config.sections), ...Object.values(config.topics)]
+  for (const entry of groups) {
+    for (const field of ['imageUrl', 'timelineImageUrl']) {
+      assert.ok(entry[field].startsWith('/'), field + ' must use a local mini-program path')
+      assert.ok(fs.existsSync(path.join(root, entry[field].slice(1))), entry[field] + ' must exist in the package')
+    }
+  }
+})
+test('share cards preserve guide sections, document versions, citation chunks, and slide pages', () => {
+  const section = sharing.build('information', { data: { section: 'faq', title: '常见问题' } }, false)
+  assert.equal(section.path, '/pages/information/information?section=faq')
+  assert.equal(section.title, '常见问题 · 护理问答助手')
+  const topic = sharing.build('information', { data: { topic: { id: 'reading', title: '带着问题开始阅读' } } }, true)
+  assert.equal(topic.query, 'topic=reading')
+  assert.equal(topic.path, undefined)
+  assert.equal(topic.title, '带着问题开始阅读 · 护理学习指南')
+  const document = sharing.build('document', { documentId: 'doc id', version: 'v&1', chunkId: 'chunk/2', data: { document: { title: '课件' }, slide: { number: 7 } } }, false)
+  assert.match(document.path, /^\/pages\/source\/source\?id=doc%20id&version=v%261&chunk=chunk%2F2&page=7$/)
+  const timeline = sharing.build('document', { documentId: 'doc', version: 'version', data: { document: { title: '讲义' } } }, true)
+  assert.equal(timeline.query, 'id=doc&version=version')
+  assert.equal(timeline.path, undefined)
+})
+test('per-document share settings override defaults and restore a shared slide', async () => {
+  const config = require('../../config/share')
+  config.documents['测试资料'] = { title: '好友：{title}', imageUrl: 'https://cos.example/friend.jpg', timelineTitle: '朋友圈：{title}', timelineImageUrl: 'https://cos.example/square.jpg' }
+  try {
+    const pageState = { _sourceOptions: { id: 'd', version: 'v' }, data: { document: { title: '测试资料' } } }
+    assert.equal(sharing.build('document', pageState, false).title, '好友：测试资料')
+    assert.equal(sharing.build('document', pageState, true).imageUrl, 'https://cos.example/square.jpg')
+  } finally { delete config.documents['测试资料'] }
+  let opened
+  const source = page('pages/source/source.js', {
+    document: async () => ({ document: { id: 'd', version: 'v', title: '课件', format: 'pptx' }, lines: [], nextOffset: null }),
+    page: async (id, version, number) => { opened = number; return { page: { number, hasImage: false }, pageCount: 10 } }
+  })
+  source.onLoad({ id: 'd', version: 'v', page: '7' })
+  await tick()
+  assert.equal(opened, 7)
+  source.setData({ slide: { number: 8 } })
+  assert.match(source.onShareAppMessage().path, /page=8$/)
+})
 test('partial answers update one bubble and final answer replaces it',async()=>{
  let stream,finish
  const app=page('pages/index/index.js',{chat:(q,h,options)=>{stream=options.onText;return new Promise(resolve=>{finish=resolve})}},{setStorageSync:()=>{}})

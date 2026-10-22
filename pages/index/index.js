@@ -1,5 +1,6 @@
 const api = require('../../services/api')
 const access = require('../../services/access')
+const share = require('../../services/share')
 const CACHE = 'knowledge-chat-v1'
 const PENDING = 'knowledge-chat-pending-v1'
 // Render explicit line blocks so Skyline preserves model paragraphs and empty lines.
@@ -9,6 +10,7 @@ function displayMessage(message) {
 Page({
   data: { input: '', messages: [], sending: false, ready: false, mode: '', status: '正在连接后端…', error: '', scrollInto: '', documentCount: 0, waitingText: '', elapsed: 0, pendingJob: false },
   onLoad() {
+    share.enable()
     this.checkAccess()
   },
   checkAccess() {
@@ -28,6 +30,8 @@ Page({
     try { const pending = wx.getStorageSync(PENDING); if (pending && pending.jobId) { this._pending = pending; this.setData({ pendingJob: true }); this.resumeAnswer() } } catch (_) {}
   },
   onUnload() { this._accessClosed = true; this._closed = true; this.stopTimer() },
+  onShareAppMessage() { return share.build('chat', this, false) },
+  onShareTimeline() { return share.build('chat', this, true) },
   onShow() { if (this._hasShown) this.checkAccess(); this._hasShown = true },
   refreshHealth() {
     this.setData({ status: '正在连接后端…' })

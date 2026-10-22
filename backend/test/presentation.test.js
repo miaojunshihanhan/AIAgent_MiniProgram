@@ -98,7 +98,7 @@ test('closed pages do not navigate when an old config request completes', async 
 function informationPage(wx) {
   let definition
   vm.runInNewContext(fs.readFileSync(path.join(root, 'pages/information/information.js'), 'utf8'), {
-    require: name => name.endsWith('/introduction') ? content : (name.endsWith('/access') ? { check: () => {} } : {}),
+    require: name => name.endsWith('/introduction') ? content : (name.endsWith('/access') ? { check: () => {} } : (name.endsWith('/share') ? require('../../services/share') : {})),
     wx, Page: value => { definition = value }
   })
   definition.data = JSON.parse(JSON.stringify(definition.data))

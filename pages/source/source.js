@@ -1,8 +1,10 @@
 const api = require('../../services/api')
 const access = require('../../services/access')
+const share = require('../../services/share')
 Page({
   data: { document: null, chunk: null, lines: [], nextOffset: null, loading: true, error: '', fullLoaded: false, shortVersion: '', originalUrl: '', opening: false, videoError: '', downloading: false, videoProgress: 0, slide: null, slideCount: 0, slideImage: '', imagePath: '', imageHeight: 420, slideImageHeight: 360, imageLoading: false, imageError: '', slideLoading: false, slideImageLoading: false, slideImageError: '' },
   onLoad(options) {
+    share.enable()
     this._sourceOptions = options
     this.checkAccess()
   },
@@ -12,9 +14,13 @@ Page({
     })
   },
   onShow() { if (this._hasShown) this.checkAccess(); this._hasShown = true },
+  onShareAppMessage() { return share.build('document', this, false) },
+  onShareTimeline() { return share.build('document', this, true) },
   initialize(options) {
     this._previewCache = {}; this._previewSerial = 0; this._slideSerial = 0; this._closed = false
     this.documentId = options.id || ''; this.version = options.version || ''; this.chunkId = options.chunk || ''
+    const sharedPage = Number(options.page)
+    this._sharedPage = Number.isInteger(sharedPage) && sharedPage > 0 ? sharedPage : null
     this.load()
   },
   onUnload() {
@@ -115,7 +121,7 @@ Page({
   load() {
     this.setData({ loading: true, error: '' })
     if (this.chunkId) {
-      api.chunk(this.documentId, this.version, this.chunkId).then(res => { this.setDocument(res.document); this.setData({ chunk: res.chunk }); if(res.chunk.pageNumber)this.loadSlide(res.chunk.pageNumber) })
+      api.chunk(this.documentId, this.version, this.chunkId).then(res => { this.setDocument(res.document); this.setData({ chunk: res.chunk }); if(this._sharedPage || res.chunk.pageNumber)this.loadSlide(this._sharedPage || res.chunk.pageNumber) })
         .catch(err => this.setData({ error: err.message })).finally(() => this.setData({ loading: false }))
     } else this.loadFull()
   },
@@ -123,7 +129,7 @@ Page({
     this.setData({ loading: true, error: '' })
     api.document(this.documentId, this.version, 0).then(res => {
       this.setDocument(res.document)
-      if(res.document.format === 'pptx' && !this.data.slide)this.loadSlide(1)
+      if(res.document.format === 'pptx' && !this.data.slide)this.loadSlide(this._sharedPage || 1)
       this.setData({ lines: res.lines, nextOffset: res.nextOffset, fullLoaded: true })
     }).catch(err => this.setData({ error: err.message })).finally(() => this.setData({ loading: false }))
   },

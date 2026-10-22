@@ -9,6 +9,7 @@
     "start": "node src/server.js",
     "import": "node scripts/import-materials.js",
     "upload:cos": "node scripts/upload-cos.js",
+    "upload:share-images": "node scripts/upload-share-images.js",
     "test": "node --test test/*.test.js",
     "profile:chat": "node scripts/profile-chat.js"
   },

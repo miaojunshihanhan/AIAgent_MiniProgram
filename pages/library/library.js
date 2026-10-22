@@ -1,9 +1,12 @@
 const api = require('../../services/api')
 const access = require('../../services/access')
+const share = require('../../services/share')
 Page({
   data: { documents: [], loading: true, error: '' },
-  onLoad() { this.checkAccess() },
+  onLoad() { share.enable(); this.checkAccess() },
   onShow() { if (this._hasShown) this.checkAccess(); this._hasShown = true },
+  onShareAppMessage() { return share.build('library', this, false) },
+  onShareTimeline() { return share.build('library', this, true) },
   onUnload() { this._accessClosed = true },
   checkAccess() { return access.check(this, api, false, () => this.load()) },
   load() {

@@ -1,9 +1,10 @@
 const api = require('../../services/api')
 const access = require('../../services/access')
 const content = require('../../config/introduction')
+const share = require('../../services/share')
 Page({
   data: { accessReady: false, accessError: '', name: content.name, tagline: content.tagline, description: content.description, topics: content.topics, keyword: '', results: content.topics },
-  onLoad() { this.checkAccess() },
+  onLoad() { share.enable(); this.checkAccess() },
   onShow() { if (this._hasShown) this.checkAccess(); this._hasShown = true },
   onUnload() { this._accessClosed = true },
   checkAccess() { return access.check(this, api, true) },
@@ -20,5 +21,6 @@ Page({
     const id = event.currentTarget.dataset.id
     if (content.topics.some(topic => topic.id === id)) wx.navigateTo({ url: '/pages/information/information?topic=' + encodeURIComponent(id) })
   },
-  onShareAppMessage() { return { title: content.name + ' · 学习资料指南', path: '/pages/intro/intro' } }
+  onShareAppMessage() { return share.build('introduction', this, false) },
+  onShareTimeline() { return share.build('introduction', this, true) }
 })

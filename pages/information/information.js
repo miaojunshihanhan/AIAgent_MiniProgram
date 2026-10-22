@@ -1,11 +1,13 @@
 const api = require('../../services/api')
 const access = require('../../services/access')
 const content = require('../../config/introduction')
+const share = require('../../services/share')
 const CACHE = 'learning-checklist-v1'
 const titles = { about: '产品介绍', checklist: '学习清单', faq: '常见问题', contact: '关于与联系' }
 Page({
   data: { accessReady: false, accessError: '', title: '学习指南', section: '', topic: null, name: content.name, description: content.description, faqs: content.faqs, expanded: '', checklist: [], completed: 0, progress: 0, storageError: '', contact: content.contact, hasLocation: false },
   onLoad(options) {
+    share.enable()
     const topic = content.topics.find(item => item.id === options.topic)
     const section = topic ? 'topic' : (titles[options.section] ? options.section : 'about')
     const contact = content.contact
@@ -15,6 +17,8 @@ Page({
     this.checkAccess()
   },
   onShow() { if (this._hasShown) this.checkAccess(); this._hasShown = true },
+  onShareAppMessage() { return share.build('information', this, false) },
+  onShareTimeline() { return share.build('information', this, true) },
   onUnload() { this._accessClosed = true },
   checkAccess() { return access.check(this, api, true) },
   restoreChecklist() {

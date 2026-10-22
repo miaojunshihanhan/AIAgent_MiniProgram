@@ -2,6 +2,11 @@
 const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { createConfig } = require('../src/config')
+test('persistent notice preserves mixed text and supports runtime clearing', () => {
+  assert.equal(createConfig({ STABLE_NOTICE: '常驻公告：2026-10-22 & v2.0' }).stableNotice, '常驻公告：2026-10-22 & v2.0')
+  assert.equal(createConfig({ STABLE_NOTICE: '' }, { STABLE_NOTICE: '常驻公告' }).stableNotice, '')
+  assert.equal(createConfig({}).stableNotice, '')
+})
 
 test('UPLOAD_CHECK is a boolean and runtime false overrides local true', () => {
   assert.equal(createConfig({ UPLOAD_CHECK: 'true' }).uploadCheck, true)
@@ -10,12 +15,14 @@ test('UPLOAD_CHECK is a boolean and runtime false overrides local true', () => {
   assert.equal(createConfig({}, { UPLOAD_CHECK: 'true' }).uploadCheck, true)
   assert.equal(createConfig({}).uploadCheck, false)
 })
-test('cloud runtime reads model and COS environment variables directly', () => {
-  const config = createConfig({ DEPLOYMENT_MODE: 'cloud', MODEL_API_URL: 'https://model.example/v1', MODEL_API_KEY: 'test-key', MODEL_NAME: 'test-model', COS_BUCKET: 'test-123', COS_REGION: 'ap-shanghai', COS_SECRET_ID: 'test-id', COS_SECRET_KEY: 'test-secret', ALLOWED_OPENIDS: 'member, colleague' })
+test('cloud runtime reads model, COS and announcement environment variables directly', () => {
+  const config = createConfig({ DEPLOYMENT_MODE: 'cloud', MODEL_API_URL: 'https://model.example/v1', MODEL_API_KEY: 'test-key', MODEL_NAME: 'test-model', COS_BUCKET: 'test-123', COS_REGION: 'ap-shanghai', COS_SECRET_ID: 'test-id', COS_SECRET_KEY: 'test-secret', ALART: '系统公告 2026年10月', ALLOWED_OPENIDS: 'member, colleague' })
   assert.equal(config.apiUrl, 'https://model.example/v1'); assert.equal(config.apiKey, 'test-key')
   assert.equal(config.model, 'test-model'); assert.equal(config.mode, 'api')
   assert.equal(config.cosBucket, 'test-123'); assert.equal(config.cosRegion, 'ap-shanghai')
   assert.equal(config.cosSecretId, 'test-id'); assert.equal(config.cosSecretKey, 'test-secret')
+  assert.equal(config.alart, '系统公告 2026年10月')
+  assert.equal(createConfig({ ALART: '   ' }).alart, '')
   assert.equal(config.host, '0.0.0.0'); assert.equal(config.port, 8080); assert.equal(config.storage, 'cos')
   assert.equal(Object.hasOwn(config, 'allowedOpenids'), false, 'Legacy ALLOWED_OPENIDS must not restrict users')
 })

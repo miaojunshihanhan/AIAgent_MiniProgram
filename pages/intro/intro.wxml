@@ -1,4 +1,7 @@
+<import src="../../services/announcement.wxml" />
+<template is="announcement" data="{{announcementVisible, stableNotice, announcement}}" />
 <navigation-bar title="{{name}}" back="{{false}}" color="#17233d" background="#f4f7fc" />
+<view wx:if="{{accessReady}}" class="intro-announcement-row"><button class="intro-announcement-button" bindtap="showAnnouncement">小程序公告</button></view>
 <view wx:if="{{!accessReady}}" class="access-state">
   <text>{{accessError || '正在加载页面…'}}</text>
   <button wx:if="{{accessError}}" class="secondary-button" bindtap="checkAccess">重新加载</button>

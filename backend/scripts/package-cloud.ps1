@@ -35,11 +35,15 @@ try {
             if ($name -eq 'src/model.js' -and -not $source.Contains('stream:true')) { throw 'Missing streaming generation' }
             if ($name -eq 'src/server.js' -and -not $source.Contains('2026-10-20-chat-v8')) { throw 'Unexpected runtime version' }
             if ($name -eq 'src/server.js' -and (-not $source.Contains('/public-config') -or -not $source.Contains('config.uploadCheck'))) { throw 'Missing public configuration endpoint' }
+            if ($name -eq 'src/server.js' -and (-not $source.Contains('alart: config.alart') -or -not $source.Contains('stableNotice: config.stableNotice'))) { throw 'Missing announcement response fields' }
         } finally { $reader.Dispose() }
     }
     $reader = [IO.StreamReader]::new($archive.GetEntry('src/config.js').Open())
     try {
-        if (-not $reader.ReadToEnd().Contains('UPLOAD_CHECK')) { throw 'Missing UPLOAD_CHECK environment configuration' }
+        $source = $reader.ReadToEnd()
+        foreach ($variable in @('UPLOAD_CHECK', 'ALART', 'STABLE_NOTICE')) {
+            if (-not $source.Contains($variable)) { throw "Missing $variable environment configuration" }
+        }
     } finally { $reader.Dispose() }
 } finally { $archive.Dispose() }
 Move-Item -LiteralPath $temp -Destination $target -Force

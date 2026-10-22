@@ -6,6 +6,7 @@ const path = require('node:path')
 const vm = require('node:vm')
 const root = path.resolve(__dirname, '../..')
 const sharing = require('../../services/share')
+const introduction = require('../../config/introduction')
 const sharePages = [
   ['pages/index/index', 'chat'],
   ['pages/intro/intro', 'introduction'],
@@ -15,12 +16,35 @@ const sharePages = [
 ]
 function page(relative, api, wx = {}) {
   let definition
-  vm.runInNewContext(fs.readFileSync(path.join(root, relative), 'utf8'), { require: name => name.endsWith('/access') ? { check: (page, service, introduction, ready) => { page.setData({ accessReady: true }); if (ready) ready() } } : (name.endsWith('/share') ? sharing : api), Page: value => {definition = value}, wx, Date, encodeURIComponent, setInterval:()=>1, clearInterval:()=>{} })
+  vm.runInNewContext(fs.readFileSync(path.join(root, relative), 'utf8'), { require: name => name.endsWith('/access') ? { check: (page, service, introductionMode, ready) => { page.setData({ accessReady: true }); if (ready) ready() } } : (name.endsWith('/share') ? sharing : (name.endsWith('/introduction') ? introduction : api)), Page: value => {definition = value}, wx, Date, encodeURIComponent, setInterval:()=>1, clearInterval:()=>{} })
   definition.data = JSON.parse(JSON.stringify(definition.data))
   definition.setData = values => Object.assign(definition.data, values)
   return definition
 }
 const tick = () => new Promise(resolve => setImmediate(resolve))
+test('both pages open and close the shared announcement dialog without merging notice blocks', () => {
+  for (const route of ['pages/intro/intro.js', 'pages/index/index.js']) {
+    const view = page(route, {})
+    view.setData({ announcement: '维护公告：今晚 20:00 更新', stableNotice: '常驻公告：2026-10-22 已更新 & v2.0' })
+    view.showAnnouncement()
+    assert.equal(view.data.announcementVisible, true)
+    assert.equal(view.data.stableNotice, '常驻公告：2026-10-22 已更新 & v2.0')
+    assert.equal(view.data.announcement, '维护公告：今晚 20:00 更新')
+    view.closeAnnouncement()
+    assert.equal(view.data.announcementVisible, false)
+    view.setData({ announcement: '' })
+    view.showAnnouncement()
+    assert.equal(view.data.announcementVisible, true)
+    view.setData({ stableNotice: '' })
+    assert.equal(view.data.stableNotice, '')
+    const markup = fs.readFileSync(path.join(root, route.replace('.js', '.wxml')), 'utf8')
+    assert.ok(markup.includes('is="announcement"'))
+  }
+  const template = fs.readFileSync(path.join(root, 'services/announcement.wxml'), 'utf8')
+  assert.ok(template.indexOf('{{stableNotice}}') < template.indexOf("{{announcement || '暂无公告'}}"))
+  assert.ok(template.includes('wx:if="{{stableNotice}}"'))
+  assert.match(fs.readFileSync(path.join(root, 'app.wxss'), 'utf8'), /\.announcement-paragraph\{display:block;/)
+})
 test('all shareable pages enable timeline sharing and define both share callbacks', () => {
   for (const [route, key] of sharePages) {
     const options = JSON.parse(fs.readFileSync(path.join(root, route + '.json'), 'utf8'))

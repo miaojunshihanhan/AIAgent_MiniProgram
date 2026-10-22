@@ -8,20 +8,20 @@ const { WebSocket } = require('ws')
 const { createServer } = require('../src/server')
 const root = path.resolve(__dirname, '../..')
 const content = require('../../config/introduction')
-async function serve(t, uploadCheck) {
+async function serve(t, uploadCheck, alart = '', stableNotice = '') {
   let calls = 0
-  const server = createServer({ uploadCheck, deployment: 'cloud', storage: 'local', dataRoot: '/unused', mode: 'mock' }, { generateAnswer: () => { calls++; throw new Error('must not invoke model') } })
+  const server = createServer({ uploadCheck, alart, stableNotice, deployment: 'cloud', storage: 'local', dataRoot: '/unused', mode: 'mock' }, { generateAnswer: () => { calls++; throw new Error('must not invoke model') } })
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
   t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections() }))
   const base = 'http://127.0.0.1:' + server.address().port
   const headers = { 'x-wx-source': 'miniprogram', 'x-wx-openid': 'user', 'content-type': 'application/json' }
   return { base, headers, calls: () => calls, request: (route, options = {}) => fetch(base + route, { ...options, headers }) }
 }
-test('introduction config needs no index, exposes only boolean, and retains cloud authentication', async t => {
-  const { request, base } = await serve(t, true)
+test('public config returns announcement text and retains cloud authentication', async t => {
+  const { request, base } = await serve(t, true, '维护公告：今晚 20:00 更新', '历史公告：2026-10-22 & v2.0')
   const res = await request('/public-config')
   assert.equal(res.headers.get('cache-control'), 'no-store')
-  assert.deepEqual(await res.json(), { uploadCheck: true })
+  assert.deepEqual(await res.json(), { uploadCheck: true, alart: '维护公告：今晚 20:00 更新', stableNotice: '历史公告：2026-10-22 & v2.0' })
   assert.equal((await request('/health')).status, 200)
   assert.equal((await fetch(base + '/public-config')).status, 401)
 })
@@ -45,7 +45,7 @@ test('UPLOAD_CHECK blocks websocket upgrades', async t => {
 })
 test('false preserves normal chat even for local preset questions', async t => {
   const { request } = await serve(t, false)
-  assert.deepEqual(await (await request('/public-config')).json(), { uploadCheck: false })
+  assert.deepEqual(await (await request('/public-config')).json(), { uploadCheck: false, alart: '', stableNotice: '' })
   const res = await request('/chat/jobs', { method: 'POST', body: JSON.stringify({ question: '你好' }) })
   assert.equal(res.status, 200)
   assert.equal((await res.json()).status, 'completed')

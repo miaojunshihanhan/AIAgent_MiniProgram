@@ -8,7 +8,8 @@ function displayMessage(message) {
   return Object.assign({}, message, { citations: message.citations || [], lines: String(message.content || '').split(/\r\n|\r|\n/).map(line => line || '\u00a0') })
 }
 Page({
-  data: { input: '', messages: [], sending: false, ready: false, mode: '', status: '正在连接后端…', error: '', scrollInto: '', documentCount: 0, waitingText: '', elapsed: 0, pendingJob: false },
+  // Both notices are refreshed by the backend page-config check on entry.
+  data: { input: '', messages: [], sending: false, ready: false, mode: '', status: '正在连接后端…', error: '', scrollInto: '', documentCount: 0, waitingText: '', elapsed: 0, pendingJob: false, announcement: '' },
   onLoad() {
     share.enable()
     this.checkAccess()
@@ -32,6 +33,9 @@ Page({
   onUnload() { this._accessClosed = true; this._closed = true; this.stopTimer() },
   onShareAppMessage() { return share.build('chat', this, false) },
   onShareTimeline() { return share.build('chat', this, true) },
+  showAnnouncement() { this.setData({ announcementVisible: true }) },
+  closeAnnouncement() { this.setData({ announcementVisible: false }) },
+  holdAnnouncement() {},
   onShow() { if (this._hasShown) this.checkAccess(); this._hasShown = true },
   refreshHealth() {
     this.setData({ status: '正在连接后端…' })

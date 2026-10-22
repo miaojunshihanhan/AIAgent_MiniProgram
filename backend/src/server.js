@@ -73,7 +73,7 @@ function createServer(config = defaults, dependencies = {}) {
         // All mini program users can access the shared library; no per-user allowlist.
       }
       if (req.method === 'GET' && url.pathname === '/public-config') {
-        return send(res, 200, { uploadCheck: config.uploadCheck === true })
+        return send(res, 200, { uploadCheck: config.uploadCheck === true, alart: config.alart || '', stableNotice: config.stableNotice || '' })
       }
       if (config.uploadCheck === true && /^\/(chat|documents)(\/|$)/.test(url.pathname)) {
         return send(res, 503, { error: '当前仅开放产品介绍与学习指南。', uploadCheck: true })

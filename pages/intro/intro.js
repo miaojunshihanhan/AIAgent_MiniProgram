@@ -3,11 +3,14 @@ const access = require('../../services/access')
 const content = require('../../config/introduction')
 const share = require('../../services/share')
 Page({
-  data: { accessReady: false, accessError: '', name: content.name, tagline: content.tagline, description: content.description, topics: content.topics, keyword: '', results: content.topics },
+  data: { accessReady: false, accessError: '', announcement: '', name: content.name, tagline: content.tagline, description: content.description, topics: content.topics, keyword: '', results: content.topics },
   onLoad() { share.enable(); this.checkAccess() },
   onShow() { if (this._hasShown) this.checkAccess(); this._hasShown = true },
   onUnload() { this._accessClosed = true },
   checkAccess() { return access.check(this, api, true) },
+  showAnnouncement() { this.setData({ announcementVisible: true }) },
+  closeAnnouncement() { this.setData({ announcementVisible: false }) },
+  holdAnnouncement() {},
   onSearch(event) {
     const keyword = event.detail.value.slice(0, 60)
     const query = keyword.trim().toLowerCase()

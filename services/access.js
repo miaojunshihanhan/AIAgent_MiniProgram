@@ -14,7 +14,7 @@ function check(page, api, introduction, onReady) {
       })
       return
     }
-    page.setData({ accessReady: true })
+    page.setData({ accessReady: true, announcement: typeof config.alart === 'string' ? config.alart : '', stableNotice: typeof config.stableNotice === 'string' ? config.stableNotice : '' })
     if (onReady) onReady()
   }).catch(error => {
     if (!page._accessClosed && serial === page._accessSerial) page.setData({ accessError: error.message || '网络连接失败，请重新加载。' })

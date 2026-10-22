@@ -1,0 +1,12 @@
+<template name="announcement">
+  <view wx:if="{{announcementVisible}}" class="announcement-overlay" catchtouchmove="holdAnnouncement">
+    <view class="announcement-dialog">
+      <view class="announcement-heading">小程序公告</view>
+      <scroll-view scroll-y class="announcement-content">
+        <text wx:if="{{stableNotice}}" class="announcement-paragraph announcement-stable" selectable>{{stableNotice}}</text>
+        <text class="announcement-paragraph" selectable>{{announcement || '暂无公告'}}</text>
+      </scroll-view>
+      <button class="announcement-confirm" bindtap="closeAnnouncement">确定</button>
+    </view>
+  </view>
+</template>

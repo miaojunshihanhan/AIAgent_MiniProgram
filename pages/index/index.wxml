@@ -1,9 +1,11 @@
+<import src="../../services/announcement.wxml" />
+<template is="announcement" data="{{announcementVisible, stableNotice, announcement}}" />
 <view wx:if="{{!accessReady}}" class="access-state"><text>{{accessError || '正在加载页面…'}}</text><button wx:if="{{accessError}}" class="secondary-button" bindtap="checkAccess">重新加载</button></view>
 <block wx:if="{{accessReady}}">
 <navigation-bar title="广州华商学院 AI助学" back="{{false}}" color="#17233d" background="#f4f7fc"></navigation-bar>
 <view class="toolbar">
-  <text class="eyebrow">KNOWLEDGE ASSISTANT</text>
-  <view class="toolbar-actions"><button class="small-button" bindtap="openLibrary">资料库</button><button class="small-button muted-button" bindtap="clearChat" disabled="{{sending}}" style="position: relative; left: 0rpx; top: 0rpx; width: 195rpx; display: block; box-sizing: border-box">清空</button></view>
+
+  <view class="toolbar-actions"><button class="small-button muted-button" bindtap="showAnnouncement" style="width: 161rpx; display: block; box-sizing: border-box; left: 0rpx; top: 0rpx">公告</button><button class="small-button" bindtap="openLibrary">资料库</button><button class="small-button muted-button" bindtap="clearChat" disabled="{{sending}}" style="width: 161rpx; display: block; box-sizing: border-box; left: 0rpx; top: 0rpx">清空</button></view>
 </view>
 <view class="status" bindtap="refreshHealth"><view class="status-dot {{ready ? 'online' : ''}}"></view><text>{{status}}</text></view>
 <scroll-view class="chat-scroll" scroll-y type="list" scroll-into-view="{{scrollInto}}" scroll-with-animation>

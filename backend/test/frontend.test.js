@@ -41,8 +41,10 @@ test('both pages open and close the shared announcement dialog without merging n
     assert.ok(markup.includes('is="announcement"'))
   }
   const template = fs.readFileSync(path.join(root, 'services/announcement.wxml'), 'utf8')
-  assert.ok(template.indexOf('{{stableNotice}}') < template.indexOf("{{announcement || '暂无公告'}}"))
+  assert.ok(template.indexOf('{{stableNotice}}') < template.indexOf('{{announcement}}', template.indexOf('{{stableNotice}}')))
   assert.ok(template.includes('wx:if="{{stableNotice}}"'))
+  assert.ok(template.includes('wx:if="{{announcement}}"'))
+  assert.ok(!template.includes('暂无公告'))
   assert.match(fs.readFileSync(path.join(root, 'app.wxss'), 'utf8'), /\.announcement-paragraph\{display:block;/)
 })
 test('all shareable pages enable timeline sharing and define both share callbacks', () => {

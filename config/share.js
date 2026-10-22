@@ -14,7 +14,7 @@ module.exports = {
   },
   pages: {
     chat: { title: 'AI助学护理问答', imageUrl: '/pages/index/share-home.jpg', timelineTitle: 'AI助学护理问答 · 随时查阅护理资料', timelineImageUrl: '/pages/index/share-home.jpg' },
-    introduction: { title: introduction.name + ' · 广州华商学院AI助学护理问答助手 ', 
+    introduction: { title: ' 广州华商学院AI助学护理问答助手 ', 
     imageUrl: '/pages/index/share-home.jpg', 
     timelineTitle: '广州华商学院 AI 助学护理问答助手', 
     timelineImageUrl: '/pages/index/share-home.jpg' },
